@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <!-- Definitions for gradients or filters (Optional, kept simple for pure vector) -->
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@900&amp;display=swap');
+    </style>
+  </defs>
+
+  <!-- Black Background with slightly rounded corners for a modern feel -->
+  <rect x="0" y="0" width="500" height="500" fill="#000000" rx="60" ry="60"/>
+
+  <!-- The Letters RP -->
+  <!-- Centered, bold sans-serif font, white color -->
+  <text x="50%" y="50%" 
+        font-family="'Montserrat', 'Helvetica Neue', Helvetica, Arial, sans-serif" 
+        font-weight="900" 
+        font-size="360" 
+        fill="#FFFFFF" 
+        text-anchor="middle" 
+        dominant-baseline="central"
+        letter-spacing="-8">
+    RP
+  </text>
+</svg>
