@@ -343,7 +343,7 @@ export default function AirQualityDashboard() {
                 .map(([key, value]) => {
                   const name = getPollutantName(key)
                   const unit = getPollutantUnit(key)
-                  const isDominant = key === data.dominantpol
+                  const isDominant = key === data.dominentpol
                   const percentage = Math.min((value.v / 200) * 100, 100)
 
                   return (
