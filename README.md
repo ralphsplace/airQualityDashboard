@@ -4,6 +4,7 @@ Its a lazy Saturday and I get the bright idea, would it not be cool to have a ni
 
 
 ``` bash
+bun next build
 docker-compose up -d
 ```
 
@@ -11,5 +12,5 @@ local [Air Quality Dashboard](http://localhost:8080/airQualityDashboard/index.ht
 
 
 ``` bash
-docker-compose up -d
+docker-compose down
 ```
