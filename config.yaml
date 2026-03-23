@@ -1,0 +1,24 @@
+# Polling Configuration
+polling:
+  url: "http://192.168.0.1/realtime"
+  interval_seconds: 60
+
+# Database Configuration
+database:
+
+  # Use "sqlite" for local file storage or "postgresql" for production
+  type: "sqlite"
+
+  # SQLite Config (used if type is sqlite)
+  sqlite_path: "./air_quality.db"
+  
+  # Use "sqlite" for local file storage or "postgresql" for production
+  #type: "postgresql"
+
+  # PostgreSQL Config (used if type is postgresql)
+  #postgres:
+  #  user: "user"
+  #  password: "password"
+  #  host: "db"      # Service name in docker-compose
+  #  port: 5432
+  #  db_name: "airdata"
