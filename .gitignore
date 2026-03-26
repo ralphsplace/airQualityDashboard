@@ -1,4 +1,6 @@
 
 .vscode
+.tmp
+.dist
 venv
 node_modules

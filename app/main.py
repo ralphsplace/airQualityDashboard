@@ -1,212 +1,207 @@
-from pathlib import Path
-from datetime import datetime
-from typing import Optional
-from contextlib import contextmanager
-
-from fastapi import FastAPI, Depends, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
-from .database import engine, Base, get_db
-from .models import AirReading
-from .config import settings
+from __future__ import annotations
 
 import json
+import os
+import re
 import threading
 import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
 
 import requests
-import uvicorn
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
+from .config import settings
+from .database import Base, engine, get_db, SessionLocal
+from .models import AirReading
 
-# --- Configuration Access ---
-GAIA_A08_URL = settings.gaia_a08_url
-GAIA_A08_POLL_INTERVAL = getattr(settings, "gaia_a08_poll_interval", 60)
+Base.metadata.create_all(bind=engine)
 
-
-# --- App Initialization ---
 app = FastAPI(
     title="Air Quality Monitor",
-    description="Polls stations and provides API access to data.",
-    version="1.0.0",
+    description="Polls air quality stations, stores readings, and serves a bundled dashboard.",
+    version="1.1.0",
+)
+
+# Same-origin serving is the real cure for most CORS heartburn.
+# This still keeps local development pleasant across RFC1918 ranges.
+LOCAL_NAT_REGEX = (
+    r"^https?://("
+    r"localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|"
+    r"10(?:\.\d{1,3}){3}|"
+    r"192\.168(?:\.\d{1,3}){2}|"
+    r"172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}"
+    r")(?::\d{1,5})?$"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.53\.\d{1,3}|[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.(local|home))(:\d+)?$",
+    allow_origins=["null"],
+    allow_origin_regex=LOCAL_NAT_REGEX,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_private_network=True,
 )
 
-
-app.mount("/static", StaticFiles(directory=str("/dist")), name="static")
-
-
-# Create DB tables on startup
-Base.metadata.create_all(bind=engine)
-
-
-@contextmanager
-def db_session():
-    db = next(get_db())
-    try:
-        yield db
-    finally:
-        db.close()
+POLL_URL = settings.poll_url
+POLL_INTERVAL = max(5, int(settings.poll_interval))
+BASE_DIR = Path(__file__).resolve().parent.parent
+DIST_DIR = BASE_DIR / "dist"
+ASSETS_DIR = DIST_DIR / "assets"
 
 
-# --- Background Polling Logic ---
-def parse_and_store_data(data: dict, db: Session):
-    """Parses the JSON payload and stores it in the DB."""
-    try:
-        station_id = data.get("station", {}).get("id")
-        readings = data.get("readings", {})
-        location = data.get("station", {}).get("location", {})
-
-        new_reading = AirReading(
-            timestamp_utc=datetime.utcnow(),
-            station_id=station_id,
-            pm1=readings.get("pm1"),
-            pm25=readings.get("pm25"),
-            pm10=readings.get("pm10"),
-            temperature_c=readings.get("temperature"),
-            humidity_pct=readings.get("humidity"),
-            lat=location.get("latitude"),
-            lon=location.get("longitude"),
-            source_json=json.dumps(data),
-        )
-
-        db.add(new_reading)
-        db.commit()
-        print(f"[Poller] Saved reading for station: {station_id}")
-
-    except Exception as e:
-        db.rollback()
-        print(f"[Poller] Error parsing data: {e}")
+@app.get("/health", tags=["System"])
+def health():
+    return {
+        "status": "ok",
+        "poll_url": POLL_URL,
+        "poll_interval": POLL_INTERVAL,
+        "ui_available": DIST_DIR.exists(),
+    }
 
 
-def poller_loop():
-    """The infinite loop that polls the URL."""
-    print(f"[Poller] Starting polling service. Target: {GAIA_A08_URL}")
-
-    while True:
-        try:
-            response = requests.get(GAIA_A08_URL, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                with db_session() as db:
-                    parse_and_store_data(data, db)
-            else:
-                print(f"[Poller] Received status {response.status_code}")
-        except Exception as e:
-            print(f"[Poller] Request failed: {e}")
-
-        time.sleep(GAIA_A08_POLL_INTERVAL)
-
-
-# Start the poller in a separate thread when the app starts
-@app.on_event("startup")
-def startup_event():
-    thread = threading.Thread(target=poller_loop, daemon=True)
-    thread.start()
-
-
-# --- Static Page Routes ---
 @app.get("/", include_in_schema=False)
-def serve_index():
-    index_file = "/dist/index.html"
+def root_index():
+    index_file = DIST_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
-    return JSONResponse(status_code=404, content={"detail": "index.html not found"})
+    return {
+        "status": "running",
+        "message": "Backend is up. UI build not found. Build the frontend or use the included dist folder.",
+        "openapi": "/docs",
+    }
 
 
-@app.get("/favicon.svg", include_in_schema=False)
-def serve_favicon():
-    favicon = "/dist/img/favicon.svg"
-    if favicon.exists():
-        return FileResponse(favicon)
-    return JSONResponse(status_code=404, content={"detail": "favicon not found"})
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+
+favicon_candidates = [DIST_DIR / "favicon.ico", BASE_DIR / "public" / "favicon.ico"]
 
 
-# --- API Endpoints ---
-@app.get("/health", tags=["System"])
-def health_check(db: Session = Depends(get_db)):
-    """Check database connection and basic health."""
-    try:
-        db.query(AirReading).limit(1).all()
-        return {"status": "healthy", "database": "connected"}
-    except Exception as e:
-        return {"status": "unhealthy", "database": "error", "error": str(e)}
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    for candidate in favicon_candidates:
+        if candidate.exists():
+            return FileResponse(candidate)
+    raise HTTPException(status_code=404, detail="favicon not found")
+
+
+@app.get("/api", tags=["System"])
+def api_root():
+    return {"status": "running", "poller_target": POLL_URL, "docs": "/docs"}
+
+
+@app.get("/devices", tags=["Data"])
+def get_devices(db: Session = Depends(get_db)):
+    rows = (
+        db.query(AirReading.station_id)
+        .filter(AirReading.station_id.isnot(None))
+        .distinct()
+        .order_by(AirReading.station_id.asc())
+        .all()
+    )
+    return [{"station_id": station_id, "name": station_id} for (station_id,) in rows]
 
 
 @app.get("/status/current", tags=["Data"])
 def get_current_status(
-    station_id: Optional[str] = None,
+    station_id: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """Returns the most recent reading recorded."""
-    try:
-        query = db.query(AirReading).order_by(AirReading.timestamp_utc.desc())
-
-        if station_id:
-            query = query.filter(AirReading.station_id == station_id)
-
-        reading = query.first()
-        if not reading:
-            raise HTTPException(status_code=404, detail="No readings found")
-        return reading
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[Error] get_current_status failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    query = db.query(AirReading)
+    if station_id:
+        query = query.filter(AirReading.station_id == station_id)
+    reading = query.order_by(AirReading.timestamp_utc.desc()).first()
+    if not reading:
+        raise HTTPException(status_code=404, detail="No readings found")
+    return reading
 
 
 @app.get("/status/history", tags=["Data"])
 def get_history(
-    station_id: Optional[str] = None,
-    limit: int = Query(100, le=1000),
+    station_id: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
-    """Returns historic readings."""
-    query = db.query(AirReading).order_by(AirReading.timestamp_utc.desc())
-
+    query = db.query(AirReading)
     if station_id:
         query = query.filter(AirReading.station_id == station_id)
+    return query.order_by(AirReading.timestamp_utc.desc()).limit(limit).all()
 
-    return query.limit(limit).all()
+
+@app.post("/poll/once", tags=["System"])
+def poll_once_endpoint(db: Session = Depends(get_db)):
+    reading = poll_once(db)
+    return {"saved": True, "station_id": reading.station_id, "timestamp_utc": reading.timestamp_utc}
 
 
-@app.get("/devices", tags=["Data"])
-def list_devices(db: Session = Depends(get_db)):
-    rows = (
-        db.query(
-            AirReading.station_id,
-            func.max(AirReading.timestamp_utc).label("last_seen"),
-            func.max(AirReading.lat).label("lat"),
-            func.max(AirReading.lon).label("lon"),
-        )
-        .group_by(AirReading.station_id)
-        .order_by(AirReading.station_id.asc())
-        .all()
+@app.get("/{full_path:path}", include_in_schema=False)
+def spa_fallback(full_path: str):
+    if full_path.startswith("api") or full_path.startswith("status") or full_path.startswith("devices") or full_path.startswith("docs") or full_path.startswith("openapi") or full_path.startswith("redoc") or full_path.startswith("poll") or full_path.startswith("health"):
+        raise HTTPException(status_code=404, detail="Not found")
+    index_file = DIST_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Not found")
+
+
+
+def parse_and_store_data(data: dict, db: Session) -> AirReading:
+    station = data.get("station") or {}
+    readings = data.get("readings") or {}
+    location = station.get("location") or {}
+
+    new_reading = AirReading(
+        timestamp_utc=datetime.now(timezone.utc).replace(tzinfo=None),
+        station_id=station.get("id"),
+        pm1=readings.get("pm1"),
+        pm25=readings.get("pm25"),
+        pm10=readings.get("pm10"),
+        temperature_c=readings.get("temperature"),
+        humidity_pct=readings.get("humidity"),
+        lat=location.get("latitude"),
+        lon=location.get("longitude"),
+        source_json=json.dumps(data),
     )
-
-    return [
-        {
-            "station_id": row.station_id,
-            "name": row.station_id,
-            "last_seen": row.last_seen.isoformat() if row.last_seen else None,
-            "lat": row.lat,
-            "lon": row.lon,
-        }
-        for row in rows
-    ]
+    db.add(new_reading)
+    db.commit()
+    db.refresh(new_reading)
+    return new_reading
 
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8008, reload=True)
+
+def poll_once(db: Session) -> AirReading:
+    response = requests.get(POLL_URL, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    return parse_and_store_data(data, db)
+
+
+
+def poller_loop() -> None:
+    print(f"[Poller] Starting polling service. Target: {POLL_URL}")
+    while True:
+        db = SessionLocal()
+        try:
+            reading = poll_once(db)
+            print(f"[Poller] Saved reading for station: {reading.station_id}")
+        except Exception as exc:
+            db.rollback()
+            print(f"[Poller] Request failed: {exc}")
+        finally:
+            db.close()
+        time.sleep(POLL_INTERVAL)
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    if os.environ.get("AIR_QUALITY_DISABLE_POLLER", "0") == "1":
+        print("[Poller] Disabled via AIR_QUALITY_DISABLE_POLLER=1")
+        return
+    thread = threading.Thread(target=poller_loop, daemon=True)
+    thread.start()

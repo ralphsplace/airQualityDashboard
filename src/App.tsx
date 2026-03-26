@@ -284,6 +284,7 @@ export default function App() {
         ) : null}
 
         <div className="stats-grid">
+          <StatCard title="PM1" value={current?.pm1 ?? "-"} subtitle="Fine airborne particles" icon={Wind} />
           <StatCard title="PM2.5" value={current?.pm25 ?? "-"} subtitle={pm25Status.note} icon={Wind} />
           <StatCard title="PM10" value={current?.pm10 ?? "-"} subtitle="Larger airborne particles" icon={Wind} />
           <StatCard

@@ -1,12 +1,7 @@
 # Stage 1: Build the frontend
 FROM node:20-alpine AS builder
 
-WORKDIR /app
-
-# Copy package manifests first for better layer caching
-COPY package*.json ./
-# If you use npm ci, package-lock.json should exist
-RUN npm ci
+WORKDIR /
 
 # Copy the rest of the app
 COPY . .
@@ -15,6 +10,7 @@ ARG VITE_API_BASE_URL=http://localhost:8008
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Build the production bundle
+RUN npm install
 RUN npm run build
 
 
@@ -22,22 +18,21 @@ RUN npm run build
 FROM python:3.10-slim
 
 # Set working directory
-WORKDIR /
+WORKDIR /app
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-
-# Copy built frontend assets to serve them with the backend
-RUN mkdir -p /dist
-COPY --from=builder /app/dist /dist
 
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY app ./app
+COPY --from=builder dist ./dist
+COPY public ./public
+COPY config.yaml ./config.yaml
 
 # Expose the port
 EXPOSE 8008
