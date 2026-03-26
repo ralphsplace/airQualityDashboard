@@ -10,8 +10,8 @@ class Settings:
             config = yaml.safe_load(f)
 
         # Polling Settings
-        self.poll_url = config['polling']['url']
-        self.poll_interval = config['polling']['interval_seconds']
+        self.gaia_a08_url = config['gaia_a08']['url']
+        self.gaia_a08_poll_interval = config['gaia_a08']['poll_interval']
 
         # Database Settings
         db_config = config['database']

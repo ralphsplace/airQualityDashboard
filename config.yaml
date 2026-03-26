@@ -1,7 +1,7 @@
 # Polling Configuration
-polling:
-  url: "http://192.168.0.1/realtime"
-  interval_seconds: 60
+gaia_a08:
+  url: "http://192.168.53.203/realtime"
+  poll_interval: 65
 
 # Database Configuration
 database:
