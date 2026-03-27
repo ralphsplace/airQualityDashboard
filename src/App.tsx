@@ -50,6 +50,7 @@ interface StatCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
+  dominant?: boolean;
   icon: LucideIcon;
 }
 
@@ -80,7 +81,6 @@ interface WaqiReading {
   station_url: string | null;
   measurement_time: string | null;
   pm25: number | null;
-  pm10: number | null;
   no2: number | null;
   o3: number | null;
   so2: number | null;
@@ -90,6 +90,7 @@ interface WaqiReading {
   p: number | null;
   w: number | null;
   source_json: string;
+  is_dominant_pollutant?: (pollutant: string) => boolean;
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -119,7 +120,7 @@ function classifyPm25(pm25: number | null | undefined): Pm25Status {
   return { label: "Very Unhealthy", note: "Avoid exposure where possible." };
 }
 
-function StatCard({ title, value, subtitle, icon: Icon }: StatCardProps): React.JSX.Element {
+function StatCard({ title, value, subtitle, dominant = false, icon: Icon }: StatCardProps): React.JSX.Element {
   return (
     <div className="card">
       <div className="stat-card">
@@ -127,6 +128,11 @@ function StatCard({ title, value, subtitle, icon: Icon }: StatCardProps): React.
           <div className="muted">{title}</div>
           <div className="stat-value">{value}</div>
           {subtitle ? <div className="muted small">{subtitle}</div> : null}
+          {dominant && (    
+            <div className="badge badge-highlight" style={{ marginTop: "6px", backgroundImage: "none" }}>
+              Dominant pollutant
+            </div>
+          )}
         </div>
         <div className="icon-box">
           <Icon size={20} />
@@ -152,6 +158,7 @@ function StatCardBoard({title, statCards }: StatCardBoardProps): React.JSX.Eleme
     </section>
   );
 }
+
 export default function App() {
   const BACKEND_URL = (import.meta.env.VITE_TOOL_URI as string) || "http://localhost:8008";
   const [devices, setDevices] = useState<Device[]>([]);
@@ -179,7 +186,12 @@ export default function App() {
     ]);
 
     if (currentRes.ok) {
-      setWaqiCurrent(await currentRes.json());
+      const currentJson = (await currentRes.json()) as WaqiReading;
+      currentJson.is_dominant_pollutant = (pollutant: string): boolean => {
+        if (!pollutant) return false;
+        return currentJson.dominant_pollutant?.toLowerCase() === pollutant.toLowerCase();
+      };
+      setWaqiCurrent(currentJson);
     }
 
     // if (historyRes.ok) {
@@ -363,8 +375,6 @@ export default function App() {
             <span>{error}</span>
           </div>
         ) : null}
-
-
           <StatCardBoard
             title="Indoors"
             statCards={[
@@ -406,7 +416,6 @@ export default function App() {
               },
             ]}
           />
-
           <StatCardBoard
             title="Outdoors"
             statCards={[
@@ -414,36 +423,35 @@ export default function App() {
                 title: "PM2.5",
                 value: waqiCurrent?.pm25 ?? "-",
                 subtitle: pm25Status.note,
-                icon: Wind,
-              },
-              {
-                title: "PM10",
-                value: waqiCurrent?.pm10 ?? "-",
-                subtitle: "Larger airborne particles",
+                dominant: waqiCurrent?.is_dominant_pollutant?.("pm25"),
                 icon: Wind,
               },
               {
                 title: "NO2",
                 value: waqiCurrent?.no2 ?? "-",
                 subtitle: "Nitrogen dioxide",
+                dominant: waqiCurrent?.is_dominant_pollutant?.("no2"),
                 icon: Wind,
               },
               {
                 title: "O3",
                 value: waqiCurrent?.o3 ?? "-",
                 subtitle: "Ozone",
+                dominant: waqiCurrent?.is_dominant_pollutant?.("o3"),
                 icon: Wind,
               },
               {
-                title: "so2",
+                title: "SO2",
                 value: waqiCurrent?.so2 ?? "-",
                 subtitle: "Sulfur dioxide",
+                dominant: waqiCurrent?.is_dominant_pollutant?.("so2"),
                 icon: Wind,
               },
               {
-                title: "co",
+                title: "CO",
                 value: waqiCurrent?.co ?? "-",
                 subtitle: "Carbon monoxide",
+                dominant: waqiCurrent?.is_dominant_pollutant?.("co"),
                 icon: Wind,
               }
             ]}
