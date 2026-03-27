@@ -5,12 +5,5 @@ services:
     restart: unless-stopped
     ports:
       - "8008:8008" 
-    environment:
-      - GAIA_A08_URL=${GAIA_A08_URL}
-      - GAIA_A08_POLL_INTERVAL=${GAIA_A08_POLL_INTERVAL}
-      - WAQI_ENABLED=${WAQI_ENABLED}
-      - WAQI_TOKEN=${WAQI_TOKEN}
-      - WAQI_URL=${WAQI_URL}
-      - WAQI_POLL_INTERVAL=${WAQI_POLL_INTERVAL}
     volumes:
       - ./sqlite/air_quality.db:/app/sqlite/air_quality.db

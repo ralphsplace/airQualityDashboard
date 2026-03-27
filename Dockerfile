@@ -20,16 +20,6 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV GAIA_A08_URL=${GAIA_A08_URL}
-ENV GAIA_A08_POLL_INTERVAL=${GAIA_A08_POLL_INTERVAL:-65}
-ENV WAQI_ENABLED=${WAQI_ENABLED:-false}
-ENV WAQI_TOKEN=${WAQI_TOKEN}  
-ENV WAQI_URL=${WAQI_URL}
-ENV WAQI_POLL_INTERVAL=${WAQI_POLL_INTERVAL:-300}
-
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -38,7 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY --from=builder dist ./dist
 COPY public ./public
-COPY config.yaml ./config.yaml
+COPY config.yml ./config.yaml
 
 # Expose the port
 EXPOSE 8008

@@ -1,11 +1,11 @@
 gaia_a08:
-  url: ${GAIA_A08_URL:-}
+  url: 
   poll_interval: 65
 
 waqi:
-  enabled: ${WAQI_ENABLED:-false}
-  token: ${WAQI_TOKEN:-}
-  url: ${WAQI_URL:-https://api.waqi.info/feed/here/}
+  enabled: true
+  token: 
+  url: 
   poll_interval: 300
 
 database:
