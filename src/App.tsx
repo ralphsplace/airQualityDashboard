@@ -53,6 +53,45 @@ interface StatCardProps {
   icon: LucideIcon;
 }
 
+interface StatCardBoardProps {
+  title: string;
+  statCards: StatCardProps[];
+}
+
+// interface WaqiForecastRow {
+//   forecast_date: string;
+//   pollutant: string;
+//   avg: number | null;
+//   min: number | null;
+//   max: number | null;
+//   station_name: string | null;
+//   station_uid: number | null;
+// }
+
+interface WaqiReading {
+  timestamp_utc: string;
+  waqi_status: string | null;
+  aqi: number | null;
+  dominant_pollutant: string | null;
+  station_name: string | null;
+  station_uid: number | null;
+  station_lat: number | null;
+  station_lon: number | null;
+  station_url: string | null;
+  measurement_time: string | null;
+  pm25: number | null;
+  pm10: number | null;
+  no2: number | null;
+  o3: number | null;
+  so2: number | null;
+  co: number | null;
+  t: number | null;
+  h: number | null;
+  p: number | null;
+  w: number | null;
+  source_json: string;
+}
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
   const d = new Date(value);
@@ -80,7 +119,7 @@ function classifyPm25(pm25: number | null | undefined): Pm25Status {
   return { label: "Very Unhealthy", note: "Avoid exposure where possible." };
 }
 
-function StatCard({ title, value, subtitle, icon: Icon }: StatCardProps) {
+function StatCard({ title, value, subtitle, icon: Icon }: StatCardProps): React.JSX.Element {
   return (
     <div className="card">
       <div className="stat-card">
@@ -97,6 +136,22 @@ function StatCard({ title, value, subtitle, icon: Icon }: StatCardProps) {
   );
 }
 
+function StatCardBoard({title, statCards }: StatCardBoardProps): React.JSX.Element {
+  return (
+    <section className="space-y-6">
+      <h1 className="text-3xl font-bold text-slate-900">{title}</h1>
+
+      <div className="stats-grid">
+        {statCards.map((card, index) => (
+          <StatCard
+            key={card.title ?? `${card.title}-${index}`}
+            {...card}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
 export default function App() {
   const BACKEND_URL = (import.meta.env.VITE_TOOL_URI as string) || "http://localhost:8008";
   const [devices, setDevices] = useState<Device[]>([]);
@@ -107,6 +162,31 @@ export default function App() {
   const [devicesLoading, setDevicesLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  const [waqiCurrent, setWaqiCurrent] = useState<WaqiReading | null>(null);
+  //const [waqiHistory, setWaqiHistory] = useState<WaqiReading[]>([]);
+
+  async function loadWaqi(url: string = BACKEND_URL): Promise<void> {
+    const cleanUrl = url.replace(/\/$/, "");
+    const currentUrl = `${cleanUrl}/waqi/current`;
+    //const historyUrl = `${cleanUrl}/waqi/history?limit=100`;
+
+    const [currentRes
+     //, historyRes
+    ] = await Promise.all([
+      fetch(currentUrl),
+      //fetch(historyUrl),
+    ]);
+
+    if (currentRes.ok) {
+      setWaqiCurrent(await currentRes.json());
+    }
+
+    // if (historyRes.ok) {
+    //   const historyJson = await historyRes.json();
+    //   setWaqiHistory(Array.isArray(historyJson) ? [...historyJson].reverse() : []);
+    // }
+  }
 
   async function loadDevices(url: string = BACKEND_URL, preserveSelection: boolean = true): Promise<Device[]> {
     setDevicesLoading(true);
@@ -195,6 +275,7 @@ export default function App() {
 
     const timer = setInterval(() => {
       loadData(BACKEND_URL, selectedDeviceId);
+      loadWaqi(BACKEND_URL);
     }, 30000);
 
     return () => {
@@ -283,23 +364,91 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className="stats-grid">
-          <StatCard title="PM1" value={current?.pm1 ?? "-"} subtitle="Fine airborne particles" icon={Wind} />
-          <StatCard title="PM2.5" value={current?.pm25 ?? "-"} subtitle={pm25Status.note} icon={Wind} />
-          <StatCard title="PM10" value={current?.pm10 ?? "-"} subtitle="Larger airborne particles" icon={Wind} />
-          <StatCard
-            title="Temperature"
-            value={current?.temperature_c != null ? `${Number(current.temperature_c).toFixed(1)} °C` : "-"}
-            subtitle="Current sensor reading"
-            icon={Thermometer}
+
+          <StatCardBoard
+            title="Indoors"
+            statCards={[
+              {
+                title: "PM1",
+                value: current?.pm1 ?? "-",
+                subtitle: "Fine airborne particles",
+                icon: Wind,
+              },
+              {
+                title: "PM2.5",
+                value: current?.pm25 ?? "-",
+                subtitle: pm25Status.note,
+                icon: Wind,
+              },
+              {
+                title: "PM10",
+                value: current?.pm10 ?? "-",
+                subtitle: "Larger airborne particles",
+                icon: Wind,
+              },
+              {
+                title: "Temperature",
+                value:
+                  current?.temperature_c != null
+                    ? `${Number(current.temperature_c).toFixed(1)} °C`
+                    : "-",
+                subtitle: "Current sensor reading",
+                icon: Thermometer,
+              },
+              {
+                title: "Humidity",
+                value:
+                  current?.humidity_pct != null
+                    ? `${Number(current.humidity_pct).toFixed(1)} %`
+                    : "-",
+                subtitle: "Current sensor reading",
+                icon: Droplets,
+              },
+            ]}
           />
-          <StatCard
-            title="Humidity"
-            value={current?.humidity_pct != null ? `${Number(current.humidity_pct).toFixed(1)} %` : "-"}
-            subtitle="Current sensor reading"
-            icon={Droplets}
+
+          <StatCardBoard
+            title="Outdoors"
+            statCards={[
+              {
+                title: "PM2.5",
+                value: waqiCurrent?.pm25 ?? "-",
+                subtitle: pm25Status.note,
+                icon: Wind,
+              },
+              {
+                title: "PM10",
+                value: waqiCurrent?.pm10 ?? "-",
+                subtitle: "Larger airborne particles",
+                icon: Wind,
+              },
+              {
+                title: "NO2",
+                value: waqiCurrent?.no2 ?? "-",
+                subtitle: "Nitrogen dioxide",
+                icon: Wind,
+              },
+              {
+                title: "O3",
+                value: waqiCurrent?.o3 ?? "-",
+                subtitle: "Ozone",
+                icon: Wind,
+              },
+              {
+                title: "so2",
+                value: waqiCurrent?.so2 ?? "-",
+                subtitle: "Sulfur dioxide",
+                icon: Wind,
+              },
+              {
+                title: "co",
+                value: waqiCurrent?.co ?? "-",
+                subtitle: "Carbon monoxide",
+                icon: Wind,
+              }
+            ]}
           />
-        </div>
+
 
         <div className="content-grid">
           <div className="card">

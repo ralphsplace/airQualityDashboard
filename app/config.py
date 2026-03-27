@@ -1,36 +1,35 @@
-from __future__ import annotations
-
-from pathlib import Path
-from typing import Any
-
+import os
 import yaml
-from pydantic import BaseModel, Field
 
+def expand_env(value):
+    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+        return os.getenv(value[2:-1], "")
+    return value
 
-class Settings(BaseModel):
-    poll_url: str = Field(default="http://127.0.0.1:8081/realtime")
-    poll_interval: int = Field(default=60)
-    database_type: str = Field(default="sqlite")
-    sqlite_path: str = Field(default="./air_quality.db")
+class Settings:
+    def __init__(self):
+        config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
 
+        gaia = config["gaia_a08"]
+        self.gaia_a08_url = gaia["url"]
+        self.gaia_a08_poll_interval = gaia["poll_interval"]
 
-def _load_yaml() -> dict[str, Any]:
-    root = Path(__file__).resolve().parent.parent
-    config_path = root / "config.yaml"
-    if not config_path.exists():
-        return {}
-    with config_path.open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
-        return data if isinstance(data, dict) else {}
+        waqi = config.get("waqi", {})
+        self.waqi_enabled = waqi.get("enabled", False)
+        self.waqi_url = waqi.get("url", "https://api.waqi.info/feed/here/")
+        self.waqi_token = expand_env(waqi.get("token", ""))
+        self.waqi_poll_interval = waqi.get("poll_interval", 300)
 
+        db_config = config["database"]
+        self.database_type = db_config.get("type", "sqlite")
+        if self.database_type == "postgresql":
+            pg = db_config["postgres"]
+            self.database_url = f"postgresql://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['db_name']}"
+        else:
+            path = db_config.get("sqlite_path", "./air_quality.db")
+            self.database_url = f"sqlite:///{path}"
+            self.sqlite_path = path
 
-raw = _load_yaml()
-gaia = raw.get("gaia_a08", {}) if isinstance(raw.get("gaia_a08"), dict) else {}
-database = raw.get("database", {}) if isinstance(raw.get("database"), dict) else {}
-
-settings = Settings(
-    poll_url=gaia.get("url", "http://127.0.0.1:8081/realtime"),
-    poll_interval=int(gaia.get("poll_interval", 60)),
-    database_type=str(database.get("type", "sqlite")),
-    sqlite_path=str(database.get("sqlite_path", "./air_quality.db")),
-)
+settings = Settings()

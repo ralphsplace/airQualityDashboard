@@ -1,7 +1,13 @@
 gaia_a08:
-  url: "http://192.168.53.203/realtime"
+  url: ${GAIA_A08_URL:-}
   poll_interval: 65
+
+waqi:
+  enabled: ${WAQI_ENABLED:-false}
+  token: ${WAQI_TOKEN:-}
+  url: ${WAQI_URL:-https://api.waqi.info/feed/here/}
+  poll_interval: 300
 
 database:
   type: "sqlite"
-  sqlite_path: "./air_quality.db"
+  sqlite_path: "./sqlite/air_quality.db"
