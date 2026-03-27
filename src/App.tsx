@@ -100,11 +100,11 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function formatShortTime(value: string | null | undefined): string {
+function formatChartTime(value: string | null | undefined): string {
   if (!value) return "-";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString([], { day: "2-digit", hour: "2-digit" });
 }
 
 function classifyPm25(pm25: number | null | undefined): Pm25Status {
@@ -305,7 +305,7 @@ export default function App() {
 
   const chartData = useMemo((): ChartDataPoint[] => {
     return history.map((row) => ({
-      time: formatShortTime(row.timestamp_utc),
+      time: formatChartTime(row.timestamp_utc),
       timestamp_utc: row.timestamp_utc,
       pm25: row.pm25,
       pm10: row.pm10,
@@ -315,6 +315,19 @@ export default function App() {
     }));
   }, [history]);
 
+  
+  const forcastData = useMemo((): ChartDataPoint[] => {
+    return history.map((row) => ({
+      time: formatChartTime(row.timestamp_utc),
+      timestamp_utc: row.timestamp_utc,
+      pm25: row.pm25,
+      pm10: row.pm10,
+      pm1: row.pm1,
+      //uvi: row.uvi,
+      temperature_c: row.temperature_c,
+      humidity_pct: row.humidity_pct,
+    }));
+  }, [history]);
   const activeStation = current?.station_id || selectedDeviceId || "Unknown station";
 
   return (
@@ -482,8 +495,28 @@ export default function App() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            <h2>Forcast</h2>
+            <p className="muted small">Forcast /status/history</p>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={forcastData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" minTickGap={24} />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
+                    labelFormatter={(_: any, payload: any) =>
+                      payload?.[0]?.payload?.timestamp_utc
+                        ? formatDate(payload[0].payload.timestamp_utc)
+                        : "-"
+                    }
+                  />
+                  <Line type="monotone" dataKey="pm25" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="pm10" dot={false} strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-
           <div className="side-column">
             <div className="card">
               <h2>Current station</h2>
