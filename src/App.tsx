@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { LucideIcon } from "lucide-react";
 import { Wind, Thermometer, Droplets, MapPin, Clock, Database, AlertCircle } from "lucide-react";
+import { GiPoisonGas } from "react-icons/gi";
+import { WiBarometer } from "react-icons/wi";
 import {
   LineChart,
   Line,
@@ -9,6 +10,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 
 
@@ -41,6 +43,16 @@ interface ChartDataPoint {
   humidity_pct: number | null;
 }
 
+interface WaqiChartDataPoint {
+  time: string;
+  timestamp_utc: string;
+  pm25: number | null;
+  no2: number | null;
+  o3: number | null;
+  so2: number | null;
+  co: number | null;
+}
+
 interface Device {
   station_id: string;
   name?: string;
@@ -51,7 +63,7 @@ interface StatCardProps {
   value: string | number;
   subtitle?: string;
   dominant?: boolean;
-  icon: LucideIcon;
+  icon: React.ElementType;
 }
 
 interface StatCardBoardProps {
@@ -171,18 +183,16 @@ export default function App() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const [waqiCurrent, setWaqiCurrent] = useState<WaqiReading | null>(null);
-  //const [waqiHistory, setWaqiHistory] = useState<WaqiReading[]>([]);
+  const [waqiHistory, setWaqiHistory] = useState<WaqiReading[]>([]);
 
   async function loadWaqi(url: string = BACKEND_URL): Promise<void> {
     const cleanUrl = url.replace(/\/$/, "");
     const currentUrl = `${cleanUrl}/waqi/current`;
-    //const historyUrl = `${cleanUrl}/waqi/history?limit=100`;
+    const historyUrl = `${cleanUrl}/waqi/history`;
 
-    const [currentRes
-     //, historyRes
-    ] = await Promise.all([
+    const [currentRes, historyRes] = await Promise.all([
       fetch(currentUrl),
-      //fetch(historyUrl),
+      fetch(historyUrl),
     ]);
 
     if (currentRes.ok) {
@@ -194,10 +204,10 @@ export default function App() {
       setWaqiCurrent(currentJson);
     }
 
-    // if (historyRes.ok) {
-    //   const historyJson = await historyRes.json();
-    //   setWaqiHistory(Array.isArray(historyJson) ? [...historyJson].reverse() : []);
-    // }
+    if (historyRes.ok) {
+      const historyJson = await historyRes.json();
+      setWaqiHistory(Array.isArray(historyJson) ? [...historyJson].reverse() : []);
+    }
   }
 
   async function loadDevices(url: string = BACKEND_URL, preserveSelection: boolean = true): Promise<Device[]> {
@@ -315,7 +325,18 @@ export default function App() {
     }));
   }, [history]);
 
-  
+  const waqiChartData = useMemo((): WaqiChartDataPoint[] => {
+    return waqiHistory.map((row) => ({
+      time: formatChartTime(row.timestamp_utc),
+      timestamp_utc: row.timestamp_utc,
+      pm25: row.pm25,
+      no2: row.no2,
+      o3: row.o3,
+      so2: row.so2,
+      co: row.co,
+    }));
+  }, [waqiHistory]);
+
   const forcastData = useMemo((): ChartDataPoint[] => {
     return history.map((row) => ({
       time: formatChartTime(row.timestamp_utc),
@@ -323,11 +344,11 @@ export default function App() {
       pm25: row.pm25,
       pm10: row.pm10,
       pm1: row.pm1,
-      //uvi: row.uvi,
       temperature_c: row.temperature_c,
       humidity_pct: row.humidity_pct,
     }));
   }, [history]);
+
   const activeStation = current?.station_id || selectedDeviceId || "Unknown station";
 
   return (
@@ -444,27 +465,63 @@ export default function App() {
                 value: waqiCurrent?.no2 ?? "-",
                 subtitle: "Nitrogen dioxide",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("no2"),
-                icon: Wind,
+                icon: GiPoisonGas,
               },
               {
                 title: "O3",
                 value: waqiCurrent?.o3 ?? "-",
                 subtitle: "Ozone",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("o3"),
-                icon: Wind,
+                icon: GiPoisonGas,
               },
               {
                 title: "SO2",
                 value: waqiCurrent?.so2 ?? "-",
                 subtitle: "Sulfur dioxide",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("so2"),
-                icon: Wind,
+                icon: GiPoisonGas,
               },
               {
                 title: "CO",
                 value: waqiCurrent?.co ?? "-",
                 subtitle: "Carbon monoxide",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("co"),
+                icon: GiPoisonGas,
+              },
+              {
+                title: "Temperature",
+                value:
+                  waqiCurrent?.t != null
+                    ? `${Number(waqiCurrent.t).toFixed(1)} °C`
+                    : "-",
+                subtitle: "Current sensor reading",
+                icon: Thermometer,
+              },
+              {
+                title: "Humidity",
+                value:
+                  waqiCurrent?.h != null
+                    ? `${Number(waqiCurrent.h).toFixed(1)} %`
+                    : "-",
+                subtitle: "Current sensor reading",
+                icon: Droplets,
+              },
+              {
+                title: "Pressure",
+                value:
+                  waqiCurrent?.p != null
+                    ? `${Number(waqiCurrent.p).toFixed(1)} hPa`
+                    : "-",
+                subtitle: "Current sensor reading",
+                icon: WiBarometer,
+              },
+              {
+                title: "Wind Speed",
+                value:
+                  waqiCurrent?.w != null
+                    ? `${Number(waqiCurrent.w).toFixed(1)} m/s`
+                    : "-",
+                subtitle: "Current sensor reading",
                 icon: Wind,
               }
             ]}
@@ -473,14 +530,18 @@ export default function App() {
 
         <div className="content-grid">
           <div className="card">
-            <h2>PM trend</h2>
+            <h2>Indoor Trend</h2>
             <p className="muted small">Recent history from /status/history</p>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" minTickGap={24} />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
+                  <XAxis
+                    dataKey="time"
+                    minTickGap={32}
+                    stroke="#b8c1d1"
+                  />
+                  <YAxis stroke="#b8c1d1" />
                   <Tooltip
                     formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
                     labelFormatter={(_: any, payload: any) =>
@@ -489,20 +550,53 @@ export default function App() {
                         : "-"
                     }
                   />
-                  <Line type="monotone" dataKey="pm25" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="pm10" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="pm1" dot={false} strokeWidth={2} />
+                  <Legend verticalAlign="top" align="center" height={28} />
+                  <Line type="monotone" dataKey="pm25" stroke="#ef4444" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="pm10" stroke="#eab308" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="pm1" stroke="#a855f7" dot={false} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            <h2>Outdoor Trend</h2>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={waqiChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
+                  <XAxis
+                    dataKey="time"
+                    minTickGap={32}
+                    stroke="#b8c1d1"
+                  />
+                  <YAxis stroke="#b8c1d1" />
+                  <Tooltip
+                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
+                    labelFormatter={(_: any, payload: any) =>
+                      payload?.[0]?.payload?.timestamp_utc
+                        ? formatDate(payload[0].payload.timestamp_utc)
+                        : "-"
+                    }
+                  />
+                  <Legend verticalAlign="top" align="center" height={28} />
+                  <Line type="monotone" dataKey="pm25" stroke="#ef4444" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="no2" stroke="#eab308" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="o3" stroke="#a855f7" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="so2" stroke="#3b82f6" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="co" stroke="#14b8a6" dot={false} strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>            
             <h2>Forcast</h2>
             <p className="muted small">Forcast /status/history</p>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={forcastData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" minTickGap={24} />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
+                  <XAxis
+                    dataKey="time"
+                    minTickGap={32}
+                    stroke="#b8c1d1"
+                  />
+                  <YAxis stroke="#b8c1d1" />
                   <Tooltip
                     formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
                     labelFormatter={(_: any, payload: any) =>
@@ -511,8 +605,9 @@ export default function App() {
                         : "-"
                     }
                   />
-                  <Line type="monotone" dataKey="pm25" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="pm10" dot={false} strokeWidth={2} />
+                  <Legend verticalAlign="top" align="center" height={28} />
+                  <Line type="monotone" dataKey="pm25" stroke="#ef4444"dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="pm10" stroke="#eab308" dot={false} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
