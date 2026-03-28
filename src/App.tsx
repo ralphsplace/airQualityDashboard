@@ -2,17 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Wind, Thermometer, Droplets, MapPin, Clock, Database, AlertCircle } from "lucide-react";
 import { GiPoisonGas } from "react-icons/gi";
 import { WiBarometer } from "react-icons/wi";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
-
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // Type definitions
 interface AirQualityReading {
@@ -112,11 +102,18 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function formatChartTime(value: string | null | undefined): string {
-  if (!value) return "-";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleTimeString([], { day: "2-digit", hour: "2-digit" });
+function formatChartDate(ts: string): string {
+    const d = new Date(ts);
+
+    if (d.getHours() === 0) {
+      return d.getDate().toString();
+    }
+
+    const h = d.getHours();
+    const ampm = h >= 12 ? "pm" : "am";
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+
+    return `${hour12}${ampm}`;
 }
 
 function classifyPm25(pm25: number | null | undefined): Pm25Status {
@@ -181,18 +178,18 @@ export default function App() {
   const [devicesLoading, setDevicesLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
-
   const [waqiCurrent, setWaqiCurrent] = useState<WaqiReading | null>(null);
   const [waqiHistory, setWaqiHistory] = useState<WaqiReading[]>([]);
 
   async function loadWaqi(url: string = BACKEND_URL): Promise<void> {
     const cleanUrl = url.replace(/\/$/, "");
-    const currentUrl = `${cleanUrl}/waqi/current`;
-    const historyUrl = `${cleanUrl}/waqi/history`;
+    const currentUrl = new URL(`${cleanUrl}/waqi/current`);
+    const historyUrl = new URL(`${cleanUrl}/waqi/history`);
+    historyUrl.searchParams.set("limit", "100000");
 
     const [currentRes, historyRes] = await Promise.all([
-      fetch(currentUrl),
-      fetch(historyUrl),
+      fetch(currentUrl.toString()),
+      fetch(historyUrl.toString()),
     ]);
 
     if (currentRes.ok) {
@@ -249,7 +246,7 @@ export default function App() {
       const cleanUrl = url.replace(/\/$/, "");
       const currentUrl = new URL(`${cleanUrl}/status/current`);
       const historyUrl = new URL(`${cleanUrl}/status/history`);
-      historyUrl.searchParams.set("limit", "100");
+      historyUrl.searchParams.set("limit", "100000");
 
       if (requestedDeviceId.trim()) {
         currentUrl.searchParams.set("station_id", requestedDeviceId.trim());
@@ -291,6 +288,7 @@ export default function App() {
       if (cancelled) return;
       const firstId = list?.[0]?.station_id || "";
       await loadData(BACKEND_URL, firstId);
+      await loadWaqi(BACKEND_URL);
     }
 
     bootstrap();
@@ -315,7 +313,7 @@ export default function App() {
 
   const chartData = useMemo((): ChartDataPoint[] => {
     return history.map((row) => ({
-      time: formatChartTime(row.timestamp_utc),
+      time: formatChartDate(row.timestamp_utc),
       timestamp_utc: row.timestamp_utc,
       pm25: row.pm25,
       pm10: row.pm10,
@@ -327,7 +325,7 @@ export default function App() {
 
   const waqiChartData = useMemo((): WaqiChartDataPoint[] => {
     return waqiHistory.map((row) => ({
-      time: formatChartTime(row.timestamp_utc),
+      time: formatChartDate(row.timestamp_utc),
       timestamp_utc: row.timestamp_utc,
       pm25: row.pm25,
       no2: row.no2,
@@ -339,7 +337,7 @@ export default function App() {
 
   const forcastData = useMemo((): ChartDataPoint[] => {
     return history.map((row) => ({
-      time: formatChartTime(row.timestamp_utc),
+      time: formatChartDate(row.timestamp_utc),
       timestamp_utc: row.timestamp_utc,
       pm25: row.pm25,
       pm10: row.pm10,

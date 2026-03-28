@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 import json
-import os
-import re
+import requests
 import threading
 import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Optional
 
-import requests
+from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from .config import settings
 from .database import Base, engine, get_db, SessionLocal
-from .models import AirReading, WaqiReading
+from .models import AirReading, WaqiForecast, WaqiReading
 
 Base.metadata.create_all(bind=engine)
 
@@ -48,12 +46,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-POLL_URL = settings.gaia_a08_url
-POLL_INTERVAL = max(5, int(settings.gaia_a08_poll_interval))
 BASE_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = BASE_DIR / "dist"
 ASSETS_DIR = DIST_DIR / "assets"
-
+POLL_URL = settings.gaia_a08_url
+POLL_INTERVAL = max(5, int(settings.gaia_a08_poll_interval))
 WAQI_ENABLED = getattr(settings, "waqi_enabled", False)
 WAQI_URL = getattr(settings, "waqi_url", "https://api.waqi.info/feed/here/")
 WAQI_TOKEN = getattr(settings, "waqi_token", "")
@@ -84,8 +81,7 @@ def root_index():
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
-favicon_candidates = [DIST_DIR / "favicon.ico", BASE_DIR / "public" / "favicon.ico"]
-
+favicon_candidates = [DIST_DIR / "favicon.svg", BASE_DIR / "public" / "favicon.svg"]
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
@@ -99,7 +95,6 @@ def favicon():
 def api_root():
     return {"status": "running", "poller_target": POLL_URL, "docs": "/docs"}
 
-
 @app.get("/devices", tags=["Data"])
 def get_devices(db: Session = Depends(get_db)):
     rows = (
@@ -110,7 +105,6 @@ def get_devices(db: Session = Depends(get_db)):
         .all()
     )
     return [{"station_id": station_id, "name": station_id} for (station_id,) in rows]
-
 
 @app.get("/status/current", tags=["Data"])
 def get_current_status(
@@ -129,7 +123,7 @@ def get_current_status(
 @app.get("/status/history", tags=["Data"])
 def get_history(
     station_id: Optional[str] = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(default=10000, ge=1, le=100000),
     db: Session = Depends(get_db),
 ):
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
@@ -144,7 +138,6 @@ def poll_once_endpoint(db: Session = Depends(get_db)):
     reading = poll_once(db)
     return {"saved": True, "station_id": reading.station_id, "timestamp_utc": reading.timestamp_utc}
 
-
 @app.get("/waqi/current", tags=["Data"])
 def get_waqi_current(db: Session = Depends(get_db)):
     reading = db.query(WaqiReading).order_by(WaqiReading.timestamp_utc.desc()).first()
@@ -153,7 +146,7 @@ def get_waqi_current(db: Session = Depends(get_db)):
     return reading
 
 @app.get("/waqi/history", tags=["Data"])
-def get_waqi_history(limit: int = Query(100, le=1000), db: Session = Depends(get_db)):
+def get_waqi_history(limit: int = Query(10000, le=100000), db: Session = Depends(get_db)):
     return (
         db.query(WaqiReading)
         .order_by(WaqiReading.timestamp_utc.desc())
@@ -312,7 +305,6 @@ def get_waqi_forecast_summary(db: Session = Depends(get_db)):
 
     return result        
 
-
 @app.get("/{full_path:path}", include_in_schema=False)
 def spa_fallback(full_path: str):
     if full_path.startswith("api") or full_path.startswith("status") or full_path.startswith("devices") or full_path.startswith("docs") or full_path.startswith("openapi") or full_path.startswith("redoc") or full_path.startswith("poll") or full_path.startswith("health"):
@@ -344,15 +336,11 @@ def parse_and_store_data(data: dict, db: Session) -> AirReading:
     db.refresh(new_reading)
     return new_reading
 
-
-
 def poll_once(db: Session) -> AirReading:
     response = requests.get(POLL_URL, timeout=10)
     response.raise_for_status()
     data = response.json()
     return parse_and_store_data(data, db)
-
-
 
 def poller_loop() -> None:
     print(f"[Poller] Starting polling service. Target: {POLL_URL}")
