@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Wind, Thermometer, Droplets, MapPin, Clock, Database, AlertCircle } from "lucide-react";
 import { GiPoisonGas } from "react-icons/gi";
 import { WiBarometer } from "react-icons/wi";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Area} from "recharts";
+
 
 // Type definitions
 interface AirQualityReading {
@@ -61,15 +62,25 @@ interface StatCardBoardProps {
   statCards: StatCardProps[];
 }
 
-// interface WaqiForecastRow {
-//   forecast_date: string;
-//   pollutant: string;
-//   avg: number | null;
-//   min: number | null;
-//   max: number | null;
-//   station_name: string | null;
-//   station_uid: number | null;
-// }
+interface WaqiForecastRow {
+  forecast_date: string;
+  pollutant: string;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  station_name: string | null;
+  station_uid: number | null;
+}
+
+interface WaqiForecastDataPoint {
+  forecast_date: string;
+  station_name: string | null;
+  station_uid: number | null;
+  o3: number | null;
+  pm25: number | null;
+  pm10: number | null;
+  uvi: number | null;
+}
 
 interface WaqiReading {
   timestamp_utc: string;
@@ -92,6 +103,7 @@ interface WaqiReading {
   p: number | null;
   w: number | null;
   source_json: string;
+  forcast?: WaqiForecastRow[];
   is_dominant_pollutant?: (pollutant: string) => boolean;
 }
 
@@ -127,6 +139,48 @@ function classifyPm25(pm25: number | null | undefined): Pm25Status {
   if (value <= 55) return { label: "Elevated", note: "Worth monitoring, especially with respiratory issues." };
   if (value <= 150) return { label: "Unhealthy", note: "Limit exposure and consider a respirator outdoors." };
   return { label: "Very Unhealthy", note: "Avoid exposure where possible." };
+}
+
+function aggregateForecast(rows: WaqiForecastRow[]): WaqiForecastDataPoint[] {
+  const map = new Map<string, WaqiForecastDataPoint>();
+
+  for (const row of rows) {
+    const key = row.forecast_date;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        forecast_date: row.forecast_date,
+        station_name: row.station_name,
+        station_uid: row.station_uid,
+        o3: null,
+        pm25: null,
+        pm10: null,
+        uvi: null,
+      });
+    }
+
+    const entry = map.get(key)!;
+    const value = row.avg ?? (row.min != null && row.max != null ? (row.min + row.max) / 2 : null);
+
+    switch (row.pollutant.toLowerCase()) {
+      case "o3":
+        entry.o3 = value;
+        break;
+      case "pm25":
+        entry.pm25 = value;
+        break;
+      case "pm10":
+        entry.pm10 = value;
+        break;
+      case "uvi":
+        entry.uvi = value;
+        break;
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    a.forecast_date.localeCompare(b.forecast_date)
+  );
 }
 
 function StatCard({ title, value, subtitle, dominant = false, icon: Icon }: StatCardProps): React.JSX.Element {
@@ -180,16 +234,19 @@ export default function App() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [waqiCurrent, setWaqiCurrent] = useState<WaqiReading | null>(null);
   const [waqiHistory, setWaqiHistory] = useState<WaqiReading[]>([]);
+  const [waqiForecast, setWaqiForecast] = useState<WaqiForecastRow[]>([]);
 
   async function loadWaqi(url: string = BACKEND_URL): Promise<void> {
     const cleanUrl = url.replace(/\/$/, "");
     const currentUrl = new URL(`${cleanUrl}/waqi/current`);
     const historyUrl = new URL(`${cleanUrl}/waqi/history`);
+    const forecastUrl = new URL(`${cleanUrl}/waqi/forecast`);
     historyUrl.searchParams.set("limit", "100000");
 
-    const [currentRes, historyRes] = await Promise.all([
+    const [currentRes, historyRes, forecastRes] = await Promise.all([
       fetch(currentUrl.toString()),
       fetch(historyUrl.toString()),
+      fetch(forecastUrl.toString()),
     ]);
 
     if (currentRes.ok) {
@@ -204,6 +261,11 @@ export default function App() {
     if (historyRes.ok) {
       const historyJson = await historyRes.json();
       setWaqiHistory(Array.isArray(historyJson) ? [...historyJson].reverse() : []);
+    }
+
+    if (forecastRes.ok) {
+      const forecastJson = await forecastRes.json();
+      setWaqiForecast(Array.isArray(forecastJson) ? [...forecastJson].reverse()  : []);
     }
   }
 
@@ -286,28 +348,42 @@ export default function App() {
     async function bootstrap(): Promise<void> {
       const list = await loadDevices(BACKEND_URL, false);
       if (cancelled) return;
+
       const firstId = list?.[0]?.station_id || "";
-      await loadData(BACKEND_URL, firstId);
-      await loadWaqi(BACKEND_URL);
+      setSelectedDeviceId(firstId);
+
+      await Promise.all([
+        loadData(BACKEND_URL, firstId),
+        loadWaqi(BACKEND_URL),
+      ]);
     }
 
     bootstrap();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [BACKEND_URL]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       loadData(BACKEND_URL, selectedDeviceId);
       loadWaqi(BACKEND_URL);
     }, 30000);
 
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
+    return () => clearInterval(timer);
+  }, [BACKEND_URL, selectedDeviceId]);
+
+  useEffect(() => {
+    if (!selectedDeviceId) return;
+    loadData(BACKEND_URL, selectedDeviceId);
+  }, [BACKEND_URL, selectedDeviceId]);
 
   const pm25Status = useMemo(() => classifyPm25(current?.pm25), [current]);
+  const outdoorPm25Status = useMemo(() => classifyPm25(waqiCurrent?.pm25), [waqiCurrent]);
 
   const latestCoordinates = useMemo(() => {
-    if (!current?.lat || !current?.lon) return "-";
+    if (current?.lat == null || current?.lon == null) return "-";
     return `${Number(current.lat).toFixed(4)}, ${Number(current.lon).toFixed(4)}`;
   }, [current]);
 
@@ -335,17 +411,9 @@ export default function App() {
     }));
   }, [waqiHistory]);
 
-  const forcastData = useMemo((): ChartDataPoint[] => {
-    return history.map((row) => ({
-      time: formatChartDate(row.timestamp_utc),
-      timestamp_utc: row.timestamp_utc,
-      pm25: row.pm25,
-      pm10: row.pm10,
-      pm1: row.pm1,
-      temperature_c: row.temperature_c,
-      humidity_pct: row.humidity_pct,
-    }));
-  }, [history]);
+  const waqiForecastData = useMemo((): WaqiForecastDataPoint[] => {
+    return aggregateForecast(waqiForecast);
+  }, [waqiForecast]);
 
   const activeStation = current?.station_id || selectedDeviceId || "Unknown station";
 
@@ -434,7 +502,6 @@ export default function App() {
                   current?.temperature_c != null
                     ? `${Number(current.temperature_c).toFixed(1)} °C`
                     : "-",
-                subtitle: "Current sensor reading",
                 icon: Thermometer,
               },
               {
@@ -443,7 +510,6 @@ export default function App() {
                   current?.humidity_pct != null
                     ? `${Number(current.humidity_pct).toFixed(1)} %`
                     : "-",
-                subtitle: "Current sensor reading",
                 icon: Droplets,
               },
             ]}
@@ -454,7 +520,7 @@ export default function App() {
               {
                 title: "PM2.5",
                 value: waqiCurrent?.pm25 ?? "-",
-                subtitle: pm25Status.note,
+                subtitle: outdoorPm25Status.note,
                 dominant: waqiCurrent?.is_dominant_pollutant?.("pm25"),
                 icon: Wind,
               },
@@ -492,7 +558,6 @@ export default function App() {
                   waqiCurrent?.t != null
                     ? `${Number(waqiCurrent.t).toFixed(1)} °C`
                     : "-",
-                subtitle: "Current sensor reading",
                 icon: Thermometer,
               },
               {
@@ -501,7 +566,6 @@ export default function App() {
                   waqiCurrent?.h != null
                     ? `${Number(waqiCurrent.h).toFixed(1)} %`
                     : "-",
-                subtitle: "Current sensor reading",
                 icon: Droplets,
               },
               {
@@ -510,7 +574,6 @@ export default function App() {
                   waqiCurrent?.p != null
                     ? `${Number(waqiCurrent.p).toFixed(1)} hPa`
                     : "-",
-                subtitle: "Current sensor reading",
                 icon: WiBarometer,
               },
               {
@@ -519,7 +582,6 @@ export default function App() {
                   waqiCurrent?.w != null
                     ? `${Number(waqiCurrent.w).toFixed(1)} m/s`
                     : "-",
-                subtitle: "Current sensor reading",
                 icon: Wind,
               }
             ]}
@@ -583,30 +645,53 @@ export default function App() {
                 </LineChart>
               </ResponsiveContainer>
             </div>            
-            <h2>Forcast</h2>
-            <p className="muted small">Forcast /status/history</p>
+            <h2>Forecast</h2>
+            <p className="muted small">Forecast from /waqi/forecast</p>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={forcastData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
-                  <XAxis
-                    dataKey="time"
-                    minTickGap={32}
-                    stroke="#b8c1d1"
+                <ComposedChart
+                    style={{ width: '100%', maxWidth: '700px', maxHeight: '70vh', aspectRatio: 1.618 }}
+                    data={waqiForecastData}
+                    margin={{
+                      top: 20,
+                      right: 0,
+                      bottom: 0,
+                      left: 0,
+                    }}
+                  >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="forecast_date" />
+                  <YAxis width="auto" />
+                  <Tooltip />
+                  <Area
+                    connectNulls
+                    dataKey="o3"
+                    fill="#a855f7"
+                    stroke="#a855f7"
+                    fillOpacity={0.12}
                   />
-                  <YAxis stroke="#b8c1d1" />
-                  <Tooltip
-                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
-                    labelFormatter={(_: any, payload: any) =>
-                      payload?.[0]?.payload?.timestamp_utc
-                        ? formatDate(payload[0].payload.timestamp_utc)
-                        : "-"
-                    }
+                  <Area
+                    connectNulls
+                    dataKey="pm25"
+                    fill="#ef4444"
+                    stroke="#ef4444"
+                    fillOpacity={0.12}
                   />
-                  <Legend verticalAlign="top" align="center" height={28} />
-                  <Line type="monotone" dataKey="pm25" stroke="#ef4444"dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="pm10" stroke="#eab308" dot={false} strokeWidth={2} />
-                </LineChart>
+                  <Area
+                    connectNulls
+                    dataKey="pm10"
+                    fill="#eab308"
+                    stroke="#eab308"
+                    fillOpacity={0.12}
+                  />
+                  <Area
+                    connectNulls
+                    dataKey="uvi"
+                    fill="#14b8a6"
+                    stroke="#14b8a6"
+                    fillOpacity={0.12}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
