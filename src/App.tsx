@@ -62,26 +62,6 @@ interface StatCardBoardProps {
   statCards: StatCardProps[];
 }
 
-interface WaqiForecastRow {
-  forecast_date: string;
-  pollutant: string;
-  avg: number | null;
-  min: number | null;
-  max: number | null;
-  station_name: string | null;
-  station_uid: number | null;
-}
-
-interface WaqiForecastDataPoint {
-  forecast_date: string;
-  station_name: string | null;
-  station_uid: number | null;
-  o3: number | null;
-  pm25: number | null;
-  pm10: number | null;
-  uvi: number | null;
-}
-
 interface WaqiReading {
   timestamp_utc: string;
   waqi_status: string | null;
@@ -103,8 +83,74 @@ interface WaqiReading {
   p: number | null;
   w: number | null;
   source_json: string;
-  forcast?: WaqiForecastRow[];
   is_dominant_pollutant?: (pollutant: string) => boolean;
+}
+
+interface WaqiForecastRow {
+  forecast_date: string;
+  pollutant: string;
+  station_name: string | null;
+  station_uid: number | null;  
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+
+}
+
+interface WaqiForecastDataPoint {
+  forecast_date: string;
+  station_name: string | null;
+  station_uid: number | null;
+  o3MinMax: number[];
+  pm25MinMax: number[];
+  pm10MinMax: number[];
+  uviMinMax: number[];
+}
+
+function aggregateForecast(rows: WaqiForecastRow[]): WaqiForecastDataPoint[] {
+  const map = new Map<string, WaqiForecastDataPoint>();
+
+  for (const row of rows) {
+    const key = row.forecast_date;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        forecast_date: row.forecast_date,
+        station_name: row.station_name,
+        station_uid: row.station_uid,
+        o3MinMax: [],
+        pm25MinMax: [],
+        pm10MinMax: [],
+        uviMinMax: [],
+      });
+    }
+
+    const entry = map.get(key)!;
+    const minMax = [row.min != null ? row.min : 0, row.max != null ? row.max : 0]
+    console.debug(entry + "updating " + row.pollutant + " minMax: " + minMax)
+
+    switch (row.pollutant.toLowerCase()) {
+      case "o3":
+        entry.o3MinMax = minMax;
+        break;
+      case "pm25":
+        entry.pm25MinMax =  minMax;
+        break;
+      case "pm10":
+        entry.pm10MinMax =  minMax;
+        break;
+      case "uvi":
+        entry.uviMinMax =  minMax;
+        break;
+    }
+  }
+
+  console.debug("Cloud Chart");
+  console.debug(Array.from(map.values()));
+
+  return Array.from(map.values()).sort((a, b) =>
+    a.forecast_date.localeCompare(b.forecast_date)
+  );
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -139,48 +185,6 @@ function classifyPm25(pm25: number | null | undefined): Pm25Status {
   if (value <= 55) return { label: "Elevated", note: "Worth monitoring, especially with respiratory issues." };
   if (value <= 150) return { label: "Unhealthy", note: "Limit exposure and consider a respirator outdoors." };
   return { label: "Very Unhealthy", note: "Avoid exposure where possible." };
-}
-
-function aggregateForecast(rows: WaqiForecastRow[]): WaqiForecastDataPoint[] {
-  const map = new Map<string, WaqiForecastDataPoint>();
-
-  for (const row of rows) {
-    const key = row.forecast_date;
-
-    if (!map.has(key)) {
-      map.set(key, {
-        forecast_date: row.forecast_date,
-        station_name: row.station_name,
-        station_uid: row.station_uid,
-        o3: null,
-        pm25: null,
-        pm10: null,
-        uvi: null,
-      });
-    }
-
-    const entry = map.get(key)!;
-    const value = row.avg ?? (row.min != null && row.max != null ? (row.min + row.max) / 2 : null);
-
-    switch (row.pollutant.toLowerCase()) {
-      case "o3":
-        entry.o3 = value;
-        break;
-      case "pm25":
-        entry.pm25 = value;
-        break;
-      case "pm10":
-        entry.pm10 = value;
-        break;
-      case "uvi":
-        entry.uvi = value;
-        break;
-    }
-  }
-
-  return Array.from(map.values()).sort((a, b) =>
-    a.forecast_date.localeCompare(b.forecast_date)
-  );
 }
 
 function StatCard({ title, value, subtitle, dominant = false, icon: Icon }: StatCardProps): React.JSX.Element {
@@ -646,11 +650,9 @@ export default function App() {
               </ResponsiveContainer>
             </div>            
             <h2>Forecast</h2>
-            <p className="muted small">Forecast from /waqi/forecast</p>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
-                    style={{ width: '100%', maxWidth: '700px', maxHeight: '70vh', aspectRatio: 1.618 }}
                     data={waqiForecastData}
                     margin={{
                       top: 20,
@@ -661,32 +663,36 @@ export default function App() {
                   >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="forecast_date" />
-                  <YAxis width="auto" />
-                  <Tooltip />
-                  <Area
-                    connectNulls
-                    dataKey="o3"
+                  <YAxis width="auto" domain={["auto", "auto"]} />
+                  <Tooltip
+                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
+                    labelFormatter={(_: any, payload: any) =>
+                      payload?.[0]?.payload?.timestamp_utc
+                        ? formatDate(payload[0].payload.timestamp_utc)
+                        : "-"
+                    }
+                  />
+                  <Legend verticalAlign="top" align="center" height={28} />
+                  {/* <Area
+                    dataKey="o3MinMax"
                     fill="#a855f7"
                     stroke="#a855f7"
                     fillOpacity={0.12}
-                  />
+                  /> */}
                   <Area
-                    connectNulls
-                    dataKey="pm25"
+                    dataKey="pm25MinMax"
                     fill="#ef4444"
                     stroke="#ef4444"
                     fillOpacity={0.12}
                   />
-                  <Area
-                    connectNulls
+                  {/* <Area
                     dataKey="pm10"
                     fill="#eab308"
                     stroke="#eab308"
                     fillOpacity={0.12}
-                  />
+                  /> */}
                   <Area
-                    connectNulls
-                    dataKey="uvi"
+                    dataKey="uviMinMax"
                     fill="#14b8a6"
                     stroke="#14b8a6"
                     fillOpacity={0.12}
@@ -711,7 +717,6 @@ export default function App() {
                 <Database size={16} /> {formatDate(lastUpdated)}
               </div>
             </div>
-
             <div className="card">
               <h2>Recent records</h2>
               <div className="records">
