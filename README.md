@@ -1,42 +1,64 @@
-# airQualityDashboard fixed package
+# Air Pollution Monitor API
 
-This package repairs the broken Python formatting, restores a working FastAPI/OpenAPI backend, and adds a bundled static UI under `dist/` so the dashboard can be served from the same origin as the API.
+FastAPI + PostgreSQL service that polls:
 
-## Why this avoids CORS pain
+- local indoor GAIA device
+- WAQI outdoor API
 
-When FastAPI serves the dashboard itself:
+every 300 seconds, stores normalized data in PostgreSQL using UTC timestamps, and exposes an OpenAPI interface for an air pollution dashboard.
 
-- UI loads from `http://host:8008/`
-- API calls go to `http://host:8008/status/current`, `.../history`, and `.../devices`
-- browser sees same origin, so CORS largely steps out of the way
+## Features
 
-The backend still allows local NAT origins for development.
+- Indoor current and history endpoints
+- Outdoor current and history endpoints
+- Latest forecast endpoint based on the latest WAQI message
+- Docker Compose deployment with 2 services: `postgres` and `app`
+- Pytest unit and API tests
+- FastAPI lifespan startup, not deprecated `@app.on_event("startup")`
 
-## Run locally
+## API endpoints
+
+- `GET /api/v1/health`
+- `GET /api/v1/indoor/current`
+- `GET /api/v1/indoor/history?days=7`
+- `GET /api/v1/outdoor/current`
+- `GET /api/v1/outdoor/history?days=7`
+- `GET /api/v1/outdoor/forecast/current`
+- `GET /docs`
+- `GET /openapi.json`
+- `GET /redoc`
+
+## Run with Docker Compose
 
 ```bash
+cp .env.example .env
+# edit WAQI_TOKEN in .env
+docker compose up --build
+```
+
+Open:
+
+- Swagger UI: http://localhost:8000/docs
+- OpenAPI JSON: http://localhost:8000/openapi.json
+- ReDoc: http://localhost:8000/redoc
+
+## Run tests locally
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload
+
+pytest
 ```
 
-Then open:
+## Notes
 
-- Dashboard: `http://localhost:8008/`
-- OpenAPI docs: `http://localhost:8008/docs`
+- Timestamps are stored and returned in UTC.
+- Local GAIA payloads do not include a source timestamp, so `recorded_at_utc` is the UTC fetch time.
+- WAQI source timestamps are converted to UTC and exposed as `source_time_utc`.
+- Forecast data is parsed into child rows and returned from the most recent outdoor message.
 
-## Docker
+## Known gap for production hardening
 
-```bash
-docker build -t air-quality-dashboard .
-docker run --rm -p 8008:8008 air-quality-dashboard
-```
-
-## Files of interest
-
-- `app/main.py` — backend + static UI serving
-- `dist/` — browser-ready bundled static UI
-- `src/` — cleaned React source for a future Vite build
-
-## Important note
-
-The included `dist/` is intentionally self-contained and browser-ready. It is not a minified Vite artifact generated in this environment.
+This package uses `Base.metadata.create_all()` at startup for simplicity. For a production rollout, I recommend adding Alembic migrations as the next step.

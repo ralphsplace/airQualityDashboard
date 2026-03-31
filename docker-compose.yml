@@ -1,9 +1,38 @@
 services:
-  air-quality-monitor:
-    build: .
-    container_name: air_quality_monitor
-    restart: unless-stopped
-    ports:
-      - "8008:8008" 
+  postgres:
+    image: postgres:16
+    container_name: air-pollution-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-airpollution}
+      POSTGRES_USER: ${POSTGRES_USER:-airpollution}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airpollution}
     volumes:
-      - ./sqlite/air_quality.db:/app/sqlite/air_quality.db
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airpollution} -d ${POSTGRES_DB:-airpollution}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: air-pollution-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-airpollution}:${POSTGRES_PASSWORD:-airpollution}@postgres:5432/${POSTGRES_DB:-airpollution}
+      INDOOR_SOURCE_URL: ${INDOOR_SOURCE_URL:-http://192.168.53.203/realtime}
+      WAQI_URL: ${WAQI_URL:-https://api.waqi.info/feed/here/}
+      WAQI_TOKEN: ${WAQI_TOKEN}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
+      ENABLE_POLLER: ${ENABLE_POLLER:-true}
+      HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-7}
+      HISTORY_MAX_DAYS: ${HISTORY_MAX_DAYS:-30}
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:

@@ -1,37 +1,31 @@
 # Stage 1: Build the frontend
-FROM node:20-alpine AS builder
+# FROM node:20-alpine AS builder
 
-WORKDIR /
+# WORKDIR /
 
-# Copy the rest of the app
-COPY . .
+# # Copy the rest of the app
+# COPY . .
 
-ARG VITE_API_BASE_URL=http://localhost:8008
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# ARG VITE_API_BASE_URL=http://localhost:8008
+# ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-# Build the production bundle
-RUN npm install
-RUN npm run build
+# # Build the production bundle
+# RUN npm install
+# RUN npm run build
 
+FROM python:3.12-slim
 
-# Use a lightweight Python image
-FROM python:3.10-slim
-
-# Set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Copy application code
+COPY pyproject.toml .
+RUN pip install .
+
 COPY app ./app
-COPY --from=builder dist ./dist
-COPY public ./public
-COPY config.yml ./config.yaml
+# COPY --from=builder dist ./dist
 
-# Expose the port
-EXPOSE 8008
+EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8008"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

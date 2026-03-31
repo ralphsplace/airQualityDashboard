@@ -44,11 +44,6 @@ interface WaqiChartDataPoint {
   co: number | null;
 }
 
-interface Device {
-  station_id: string;
-  name?: string;
-}
-
 interface StatCardProps {
   title: string;
   value: string | number;
@@ -161,7 +156,7 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function formatChartDate(ts: string): string {
-    const d = new Date(ts);
+    const d = new Date(ts.endsWith("Z") ? ts : ts + "Z");
 
     if (d.getHours() === 0) {
       return d.getDate().toString();
@@ -227,13 +222,10 @@ function StatCardBoard({title, statCards }: StatCardBoardProps): React.JSX.Eleme
 }
 
 export default function App() {
-  const BACKEND_URL = (import.meta.env.VITE_TOOL_URI as string) || "http://localhost:8008";
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const BACKEND_URL = (import.meta.env.VITE_TOOL_URI as string) || "http://localhost:8000/api";
   const [current, setCurrent] = useState<AirQualityReading | null>(null);
   const [history, setHistory] = useState<AirQualityReading[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [devicesLoading, setDevicesLoading] = useState<boolean>(false);
+
   const [error, setError] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [waqiCurrent, setWaqiCurrent] = useState<WaqiReading | null>(null);
@@ -242,9 +234,9 @@ export default function App() {
 
   async function loadWaqi(url: string = BACKEND_URL): Promise<void> {
     const cleanUrl = url.replace(/\/$/, "");
-    const currentUrl = new URL(`${cleanUrl}/waqi/current`);
-    const historyUrl = new URL(`${cleanUrl}/waqi/history`);
-    const forecastUrl = new URL(`${cleanUrl}/waqi/forecast`);
+    const currentUrl = new URL(`${cleanUrl}/v1/outdoor/current`);
+    const historyUrl = new URL(`${cleanUrl}/v1/outdoor/history`);
+    const forecastUrl = new URL(`${cleanUrl}/v1/outdoor/forecast/by_date`);
     historyUrl.searchParams.set("limit", "100000");
 
     const [currentRes, historyRes, forecastRes] = await Promise.all([
@@ -273,51 +265,14 @@ export default function App() {
     }
   }
 
-  async function loadDevices(url: string = BACKEND_URL, preserveSelection: boolean = true): Promise<Device[]> {
-    setDevicesLoading(true);
-    try {
-      const devicesUrl = `${url.replace(/\/$/, "")}/devices`;
-      const response = await fetch(devicesUrl);
-      if (!response.ok) {
-        throw new Error(`Devices request failed with ${response.status}`);
-      }
-      const data = await response.json();
-      const list = Array.isArray(data) ? data : data.devices || [];
-      setDevices(list);
-
-      if (list.length === 0) {
-        setSelectedDeviceId("");
-        return [];
-      }
-
-      const hasExisting = preserveSelection && list.some((device: Device) => device.station_id === selectedDeviceId);
-      if (!hasExisting) {
-        setSelectedDeviceId(list[0].station_id || "");
-      }
-
-      return list;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load devices.");
-      return [];
-    } finally {
-      setDevicesLoading(false);
-    }
-  }
-
-  async function loadData(url: string = BACKEND_URL, requestedDeviceId: string = selectedDeviceId): Promise<void> {
-    setLoading(true);
+  async function loadData(url: string = BACKEND_URL): Promise<void> {
     setError("");
 
     try {
       const cleanUrl = url.replace(/\/$/, "");
-      const currentUrl = new URL(`${cleanUrl}/status/current`);
-      const historyUrl = new URL(`${cleanUrl}/status/history`);
+      const currentUrl = new URL(`${cleanUrl}/v1/indoor/current`);
+      const historyUrl = new URL(`${cleanUrl}/v1/indoor/history`);
       historyUrl.searchParams.set("limit", "100000");
-
-      if (requestedDeviceId.trim()) {
-        currentUrl.searchParams.set("station_id", requestedDeviceId.trim());
-        historyUrl.searchParams.set("station_id", requestedDeviceId.trim());
-      }
 
       const [currentRes, historyRes] = await Promise.all([
         fetch(currentUrl.toString()),
@@ -341,47 +296,32 @@ export default function App() {
       setLastUpdated(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load air quality data.");
-    } finally {
-      setLoading(false);
     }
   }
 
   useEffect(() => {
-    let cancelled = false;
-
     async function bootstrap(): Promise<void> {
-      const list = await loadDevices(BACKEND_URL, false);
-      if (cancelled) return;
-
-      const firstId = list?.[0]?.station_id || "";
-      setSelectedDeviceId(firstId);
-
       await Promise.all([
-        loadData(BACKEND_URL, firstId),
+        loadData(BACKEND_URL),
         loadWaqi(BACKEND_URL),
       ]);
     }
 
     bootstrap();
-
-    return () => {
-      cancelled = true;
-    };
   }, [BACKEND_URL]);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      loadData(BACKEND_URL, selectedDeviceId);
+      loadData(BACKEND_URL);
       loadWaqi(BACKEND_URL);
     }, 30000);
 
     return () => clearInterval(timer);
-  }, [BACKEND_URL, selectedDeviceId]);
+  }, [BACKEND_URL]);
 
   useEffect(() => {
-    if (!selectedDeviceId) return;
-    loadData(BACKEND_URL, selectedDeviceId);
-  }, [BACKEND_URL, selectedDeviceId]);
+    loadData(BACKEND_URL);
+  }, [BACKEND_URL]);
 
   const pm25Status = useMemo(() => classifyPm25(current?.pm25), [current]);
   const outdoorPm25Status = useMemo(() => classifyPm25(waqiCurrent?.pm25), [waqiCurrent]);
@@ -419,7 +359,7 @@ export default function App() {
     return aggregateForecast(waqiForecast);
   }, [waqiForecast]);
 
-  const activeStation = current?.station_id || selectedDeviceId || "Unknown station";
+  const activeStation = current?.station_id || "Unknown station";
 
   return (
     <div className="page">
@@ -433,46 +373,6 @@ export default function App() {
           </div>
         </div>
 
-        <div className="card">
-          <h2>Connection</h2>
-          <div className="connection-grid">
-            <select
-              value={selectedDeviceId}
-              onChange={(e) => setSelectedDeviceId(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "6px",
-                border: "1px solid #ccc",
-                fontSize: "14px",
-              }}
-              disabled={devicesLoading || devices.length === 0}
-            >
-              {devices.length === 0 ? (
-                <option value="">No devices found</option>
-              ) : (
-                devices.map((device) => (
-                  <option key={device.station_id} value={device.station_id}>
-                    {device.name || device.station_id}
-                  </option>
-                ))
-              )}
-            </select>
-            <button
-              className="button"
-              onClick={async () => {
-                await loadDevices(BACKEND_URL);
-                await loadData(BACKEND_URL, selectedDeviceId);
-              }}
-              disabled={loading || devicesLoading}
-            >
-              Refresh devices
-            </button>
-            <span className="badge badge-good" style={{ backgroundImage: pm25Status.label === "Good" ? "" : "none" }}>
-              {pm25Status.label}
-            </span>
-          </div>
-        </div>
-
         {error ? (
           <div className="error" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <AlertCircle size={18} />
@@ -483,21 +383,18 @@ export default function App() {
             title="Indoors"
             statCards={[
               {
-                title: "PM1",
+                title: "PM1 - Smallest airborne particles",
                 value: current?.pm1 ?? "-",
-                subtitle: "Fine airborne particles",
                 icon: Wind,
               },
               {
-                title: "PM2.5",
+                title: "PM2.5 " + (pm25Status.label !== "Unknown" ? `(${pm25Status.label})` : ""),
                 value: current?.pm25 ?? "-",
-                subtitle: pm25Status.note,
                 icon: Wind,
               },
               {
-                title: "PM10",
+                title: "PM10 - Larger airborne particles",
                 value: current?.pm10 ?? "-",
-                subtitle: "Larger airborne particles",
                 icon: Wind,
               },
               {
@@ -529,30 +426,26 @@ export default function App() {
                 icon: Wind,
               },
               {
-                title: "NO2",
+                title: "NO2 = Nitrogen dioxide",
                 value: waqiCurrent?.no2 ?? "-",
-                subtitle: "Nitrogen dioxide",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("no2"),
                 icon: GiPoisonGas,
               },
               {
-                title: "O3",
+                title: "O3 - Ozone",
                 value: waqiCurrent?.o3 ?? "-",
-                subtitle: "Ozone",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("o3"),
                 icon: GiPoisonGas,
               },
               {
-                title: "SO2",
+                title: "SO2 - Sulfur dioxide",
                 value: waqiCurrent?.so2 ?? "-",
-                subtitle: "Sulfur dioxide",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("so2"),
                 icon: GiPoisonGas,
               },
               {
-                title: "CO",
+                title: "CO - Carbon monoxide",
                 value: waqiCurrent?.co ?? "-",
-                subtitle: "Carbon monoxide",
                 dominant: waqiCurrent?.is_dominant_pollutant?.("co"),
                 icon: GiPoisonGas,
               },
@@ -673,24 +566,24 @@ export default function App() {
                     }
                   />
                   <Legend verticalAlign="top" align="center" height={28} />
-                  {/* <Area
+                  <Area
                     dataKey="o3MinMax"
                     fill="#a855f7"
                     stroke="#a855f7"
                     fillOpacity={0.12}
-                  /> */}
+                  />
                   <Area
                     dataKey="pm25MinMax"
                     fill="#ef4444"
                     stroke="#ef4444"
                     fillOpacity={0.12}
                   />
-                  {/* <Area
+                  <Area
                     dataKey="pm10"
                     fill="#eab308"
                     stroke="#eab308"
                     fillOpacity={0.12}
-                  /> */}
+                  />
                   <Area
                     dataKey="uviMinMax"
                     fill="#14b8a6"
