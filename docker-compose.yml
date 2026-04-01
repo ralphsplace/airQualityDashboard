@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-airpollution}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airpollution}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - air_quality_postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -35,4 +35,4 @@ services:
       - "8000:8000"
 
 volumes:
-  postgres_data:
+  air_quality_postgres_data:

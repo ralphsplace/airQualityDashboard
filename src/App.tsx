@@ -356,7 +356,9 @@ export default function App(): React.JSX.Element {
               </div>
             )}
           </div>
-
+          <div className="icon-box">
+            <Icon size={20} />
+          </div>
         </div>
       </div>
     );
