@@ -4,19 +4,119 @@ import { GiPoisonGas } from "react-icons/gi";
 import { WiBarometer } from "react-icons/wi";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Area} from "recharts";
 
-
-// Type definitions
-interface AirQualityReading {
-  timestamp_utc: string;
-  station_id: string | null;
+interface IndoorCurrentResponse {
+  recorded_at_utc: string;
+  source_id: string;
+  latitude: number | null;
+  longitude: number | null;
   pm1: number | null;
   pm25: number | null;
   pm10: number | null;
   temperature_c: number | null;
   humidity_pct: number | null;
-  lat: number | null;
-  lon: number | null;
-  source_json: string;
+}
+
+interface IndoorHistoryItem {
+  recorded_at_utc: string;
+  pm1: number | null;
+  pm25: number | null;
+  pm10: number | null;
+  temperature_c: number | null;
+  humidity_pct: number | null;
+}
+
+interface IndoorHistoryResponse {
+  source_id: string | null;
+  from_utc: string;
+  to_utc: string;
+  items: IndoorHistoryItem[];
+}
+
+interface OutdoorCurrentResponse {
+  recorded_at_utc: string;
+  source_time_utc: string | null;
+  aqi: number | null;
+  dominant_pollutant: string | null;
+  city_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  co: number | null;
+  h: number | null;
+  no2: number | null;
+  o3: number | null;
+  p: number | null;
+  pm25: number | null;
+  so2: number | null;
+  t: number | null;
+  w: number | null;
+  is_dominant_pollutant?: (pollutant: string) => boolean;
+}
+
+interface OutdoorHistoryItem {
+  recorded_at_utc: string;
+  source_time_utc: string | null;
+  aqi: number | null;
+  dominant_pollutant: string | null;
+  city_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  co: number | null;
+  h: number | null;
+  no2: number | null;
+  o3: number | null;
+  p: number | null;
+  pm25: number | null;
+  so2: number | null;
+  t: number | null;
+  w: number | null;
+  is_dominant_pollutant?: (pollutant: string) => boolean;
+}
+
+interface OutdoorHistoryResponse {
+  from_utc: string;
+  to_utc: string;
+  items: OutdoorHistoryItem[];
+}
+
+interface ForecastPollutant {
+  pollutant: string;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+interface OutdoorForecastByDateResponse {
+  source_time_utc: string | null;
+  city_name: string | null;
+  forecast: Record<string, ForecastPollutant[]>;
+}
+
+interface ForecastChartPoint {
+  forecast_date: string;
+  o3MinMax: [number, number];
+  pm25MinMax: [number, number];
+  pm10MinMax: [number, number];
+  uviMinMax: [number, number];
+}
+
+interface IndoorChartPoint {
+  time: string;
+  recorded_at_utc: string;
+  pm1: number | null;
+  pm25: number | null;
+  pm10: number | null;
+  temperature_c: number | null;
+  humidity_pct: number | null;
+}
+
+interface OutdoorChartPoint {
+  time: string;
+  recorded_at_utc: string;
+  pm25: number | null;
+  no2: number | null;
+  o3: number | null;
+  so2: number | null;
+  co: number | null;
 }
 
 interface Pm25Status {
@@ -24,25 +124,6 @@ interface Pm25Status {
   note: string;
 }
 
-interface ChartDataPoint {
-  time: string;
-  timestamp_utc: string;
-  pm25: number | null;
-  pm10: number | null;
-  pm1: number | null;
-  temperature_c: number | null;
-  humidity_pct: number | null;
-}
-
-interface WaqiChartDataPoint {
-  time: string;
-  timestamp_utc: string;
-  pm25: number | null;
-  no2: number | null;
-  o3: number | null;
-  so2: number | null;
-  co: number | null;
-}
 
 interface StatCardProps {
   title: string;
@@ -57,97 +138,6 @@ interface StatCardBoardProps {
   statCards: StatCardProps[];
 }
 
-interface WaqiReading {
-  timestamp_utc: string;
-  waqi_status: string | null;
-  aqi: number | null;
-  dominant_pollutant: string | null;
-  station_name: string | null;
-  station_uid: number | null;
-  station_lat: number | null;
-  station_lon: number | null;
-  station_url: string | null;
-  measurement_time: string | null;
-  pm25: number | null;
-  no2: number | null;
-  o3: number | null;
-  so2: number | null;
-  co: number | null;
-  t: number | null;
-  h: number | null;
-  p: number | null;
-  w: number | null;
-  source_json: string;
-  is_dominant_pollutant?: (pollutant: string) => boolean;
-}
-
-interface WaqiForecastRow {
-  forecast_date: string;
-  pollutant: string;
-  station_name: string | null;
-  station_uid: number | null;  
-  avg: number | null;
-  min: number | null;
-  max: number | null;
-
-}
-
-interface WaqiForecastDataPoint {
-  forecast_date: string;
-  station_name: string | null;
-  station_uid: number | null;
-  o3MinMax: number[];
-  pm25MinMax: number[];
-  pm10MinMax: number[];
-  uviMinMax: number[];
-}
-
-function aggregateForecast(rows: WaqiForecastRow[]): WaqiForecastDataPoint[] {
-  const map = new Map<string, WaqiForecastDataPoint>();
-
-  for (const row of rows) {
-    const key = row.forecast_date;
-
-    if (!map.has(key)) {
-      map.set(key, {
-        forecast_date: row.forecast_date,
-        station_name: row.station_name,
-        station_uid: row.station_uid,
-        o3MinMax: [],
-        pm25MinMax: [],
-        pm10MinMax: [],
-        uviMinMax: [],
-      });
-    }
-
-    const entry = map.get(key)!;
-    const minMax = [row.min != null ? row.min : 0, row.max != null ? row.max : 0]
-    console.debug(entry + "updating " + row.pollutant + " minMax: " + minMax)
-
-    switch (row.pollutant.toLowerCase()) {
-      case "o3":
-        entry.o3MinMax = minMax;
-        break;
-      case "pm25":
-        entry.pm25MinMax =  minMax;
-        break;
-      case "pm10":
-        entry.pm10MinMax =  minMax;
-        break;
-      case "uvi":
-        entry.uviMinMax =  minMax;
-        break;
-    }
-  }
-
-  console.debug("Cloud Chart");
-  console.debug(Array.from(map.values()));
-
-  return Array.from(map.values()).sort((a, b) =>
-    a.forecast_date.localeCompare(b.forecast_date)
-  );
-}
-
 function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
   const d = new Date(value);
@@ -156,24 +146,24 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function formatChartDate(ts: string): string {
-    const d = new Date(ts.endsWith("Z") ? ts : ts + "Z");
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
 
-    if (d.getHours() === 0) {
-      return d.getDate().toString();
-    }
+  if (d.getHours() === 0) {
+    return d.getDate().toString();
+  }
 
-    const h = d.getHours();
-    const ampm = h >= 12 ? "pm" : "am";
-    const hour12 = h % 12 === 0 ? 12 : h % 12;
-
-    return `${hour12}${ampm}`;
+  const day = d.getDate();
+  const h = d.getHours();
+  const ampm = h >= 12 ? "pm" : "am";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${day}/${hour12}${ampm}`;
 }
 
 function classifyPm25(pm25: number | null | undefined): Pm25Status {
-  if (pm25 === null || pm25 === undefined || Number.isNaN(Number(pm25))) {
+  if (pm25 == null || Number.isNaN(Number(pm25))) {
     return { label: "Unknown", note: "No PM2.5 reading available." };
   }
-
   const value = Number(pm25);
   if (value <= 12) return { label: "Good", note: "Air is in a generally comfortable range." };
   if (value <= 35) return { label: "Moderate", note: "Usually fine, but sensitive people may notice it." };
@@ -182,62 +172,88 @@ function classifyPm25(pm25: number | null | undefined): Pm25Status {
   return { label: "Very Unhealthy", note: "Avoid exposure where possible." };
 }
 
-function StatCard({ title, value, subtitle, dominant = false, icon: Icon }: StatCardProps): React.JSX.Element {
-  return (
-    <div className="card">
-      <div className="stat-card">
-        <div>
-          <div className="muted">{title}</div>
-          <div className="stat-value">{value}</div>
-          {subtitle ? <div className="muted small">{subtitle}</div> : null}
-          {dominant && (    
-            <div className="badge badge-highlight" style={{ marginTop: "6px", backgroundImage: "none" }}>
-              Dominant pollutant
-            </div>
-          )}
-        </div>
-        <div className="icon-box">
-          <Icon size={20} />
-        </div>
-      </div>
-    </div>
-  );
+function aggregateForecast(
+  forecastByDate: Record<string, ForecastPollutant[]>
+): ForecastChartPoint[] {
+  return Object.entries(forecastByDate)
+    .map(([forecast_date, pollutants]) => {
+      const point: ForecastChartPoint = {
+        forecast_date,
+        o3MinMax: [0, 0],
+        pm25MinMax: [0, 0],
+        pm10MinMax: [0, 0],
+        uviMinMax: [0, 0],
+      };
+
+      for (const p of pollutants) {
+        const minMax: [number, number] = [p.min ?? 0, p.max ?? 0];
+
+        switch (p.pollutant.toLowerCase()) {
+          case "o3":
+            point.o3MinMax = minMax;
+            break;
+          case "pm25":
+            point.pm25MinMax = minMax;
+            break;
+          case "pm10":
+            point.pm10MinMax = minMax;
+            break;
+          case "uvi":
+            point.uviMinMax = minMax;
+            break;
+        }
+      }
+
+      return point;
+    })
+    .sort((a, b) => a.forecast_date.localeCompare(b.forecast_date));
 }
 
-function StatCardBoard({title, statCards }: StatCardBoardProps): React.JSX.Element {
-  return (
-    <section className="space-y-6">
-      <h1 className="text-3xl font-bold text-slate-900">{title}</h1>
+export default function App(): React.JSX.Element {
+  const BACKEND_URL =
+    (import.meta.env.VITE_TOOL_URI as string) || "http://localhost:8000/api";
 
-      <div className="stats-grid">
-        {statCards.map((card, index) => (
-          <StatCard
-            key={card.title ?? `${card.title}-${index}`}
-            {...card}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
+  const [current, setCurrent] = useState<IndoorCurrentResponse | null>(null);
+  const [history, setHistory] = useState<IndoorHistoryItem[]>([]);
+  const [waqiCurrent, setWaqiCurrent] = useState<OutdoorCurrentResponse | null>(null);
+  const [waqiHistory, setWaqiHistory] = useState<OutdoorHistoryItem[]>([]);
+  const [waqiForecast, setWaqiForecast] = useState<OutdoorForecastByDateResponse | null>(null);
+  const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState("");
 
-export default function App() {
-  const BACKEND_URL = (import.meta.env.VITE_TOOL_URI as string) || "http://localhost:8000/api";
-  const [current, setCurrent] = useState<AirQualityReading | null>(null);
-  const [history, setHistory] = useState<AirQualityReading[]>([]);
-
-  const [error, setError] = useState<string>("");
-  const [lastUpdated, setLastUpdated] = useState<string>("");
-  const [waqiCurrent, setWaqiCurrent] = useState<WaqiReading | null>(null);
-  const [waqiHistory, setWaqiHistory] = useState<WaqiReading[]>([]);
-  const [waqiForecast, setWaqiForecast] = useState<WaqiForecastRow[]>([]);
-
-  async function loadWaqi(url: string = BACKEND_URL): Promise<void> {
+  async function loadIndoor(url: string = BACKEND_URL): Promise<void> {
     const cleanUrl = url.replace(/\/$/, "");
+
+    const currentUrl = new URL(`${cleanUrl}/v1/indoor/current`);
+    const historyUrl = new URL(`${cleanUrl}/v1/indoor/history`);
+    historyUrl.searchParams.set("days", "7");
+
+    const [currentRes, historyRes] = await Promise.all([
+      fetch(currentUrl.toString()),
+      fetch(historyUrl.toString()),
+    ]);
+
+    if (!currentRes.ok) {
+      throw new Error(`Indoor current request failed with ${currentRes.status}`);
+    }
+    if (!historyRes.ok) {
+      throw new Error(`Indoor history request failed with ${historyRes.status}`);
+    }
+
+    const currentJson = (await currentRes.json()) as IndoorCurrentResponse;
+    const historyJson = (await historyRes.json()) as IndoorHistoryResponse;
+
+    setCurrent(currentJson);
+    setHistory(Array.isArray(historyJson.items) ? historyJson.items : []);
+  }
+
+  async function loadOutdoor(url: string = BACKEND_URL): Promise<void> {
+    const cleanUrl = url.replace(/\/$/, "");
+
     const currentUrl = new URL(`${cleanUrl}/v1/outdoor/current`);
     const historyUrl = new URL(`${cleanUrl}/v1/outdoor/history`);
-    const forecastUrl = new URL(`${cleanUrl}/v1/outdoor/forecast/by_date`);
-    historyUrl.searchParams.set("limit", "100000");
+    const forecastUrl = new URL(`${cleanUrl}/v1/outdoor/forecast/by-date`);
+    historyUrl.searchParams.set("days", "7");
 
     const [currentRes, historyRes, forecastRes] = await Promise.all([
       fetch(currentUrl.toString()),
@@ -245,54 +261,29 @@ export default function App() {
       fetch(forecastUrl.toString()),
     ]);
 
-    if (currentRes.ok) {
-      const currentJson = (await currentRes.json()) as WaqiReading;
-      currentJson.is_dominant_pollutant = (pollutant: string): boolean => {
-        if (!pollutant) return false;
-        return currentJson.dominant_pollutant?.toLowerCase() === pollutant.toLowerCase();
-      };
-      setWaqiCurrent(currentJson);
+    if (!currentRes.ok) {
+      throw new Error(`Outdoor current request failed with ${currentRes.status}`);
+    }
+    if (!historyRes.ok) {
+      throw new Error(`Outdoor history request failed with ${historyRes.status}`);
+    }
+    if (!forecastRes.ok) {
+      throw new Error(`Outdoor forecast request failed with ${forecastRes.status}`);
     }
 
-    if (historyRes.ok) {
-      const historyJson = await historyRes.json();
-      setWaqiHistory(Array.isArray(historyJson) ? [...historyJson].reverse() : []);
-    }
+    const currentJson = (await currentRes.json()) as OutdoorCurrentResponse;
+    const historyJson = (await historyRes.json()) as OutdoorHistoryResponse;
+    const forecastJson = (await forecastRes.json()) as OutdoorForecastByDateResponse;
 
-    if (forecastRes.ok) {
-      const forecastJson = await forecastRes.json();
-      setWaqiForecast(Array.isArray(forecastJson) ? [...forecastJson].reverse()  : []);
-    }
+    setWaqiCurrent(currentJson);
+    setWaqiHistory(Array.isArray(historyJson.items) ? historyJson.items : []);
+    setWaqiForecast(forecastJson);
   }
 
-  async function loadData(url: string = BACKEND_URL): Promise<void> {
+  async function loadAll(): Promise<void> {
     setError("");
-
     try {
-      const cleanUrl = url.replace(/\/$/, "");
-      const currentUrl = new URL(`${cleanUrl}/v1/indoor/current`);
-      const historyUrl = new URL(`${cleanUrl}/v1/indoor/history`);
-      historyUrl.searchParams.set("limit", "100000");
-
-      const [currentRes, historyRes] = await Promise.all([
-        fetch(currentUrl.toString()),
-        fetch(historyUrl.toString()),
-      ]);
-
-      if (!currentRes.ok) {
-        throw new Error(`Current status request failed with ${currentRes.status}`);
-      }
-      if (!historyRes.ok) {
-        throw new Error(`History request failed with ${historyRes.status}`);
-      }
-
-      const [currentJson, historyJson] = await Promise.all([
-        currentRes.json(),
-        historyRes.json(),
-      ]);
-
-      setCurrent(currentJson);
-      setHistory(Array.isArray(historyJson) ? [...historyJson].reverse() : []);
+      await Promise.all([loadIndoor(BACKEND_URL), loadOutdoor(BACKEND_URL)]);
       setLastUpdated(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load air quality data.");
@@ -300,66 +291,93 @@ export default function App() {
   }
 
   useEffect(() => {
-    async function bootstrap(): Promise<void> {
-      await Promise.all([
-        loadData(BACKEND_URL),
-        loadWaqi(BACKEND_URL),
-      ]);
-    }
-
-    bootstrap();
-  }, [BACKEND_URL]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      loadData(BACKEND_URL);
-      loadWaqi(BACKEND_URL);
+    void loadAll();
+    const timer = window.setInterval(() => {
+      void loadAll();
     }, 30000);
 
-    return () => clearInterval(timer);
-  }, [BACKEND_URL]);
-
-  useEffect(() => {
-    loadData(BACKEND_URL);
-  }, [BACKEND_URL]);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const pm25Status = useMemo(() => classifyPm25(current?.pm25), [current]);
   const outdoorPm25Status = useMemo(() => classifyPm25(waqiCurrent?.pm25), [waqiCurrent]);
 
   const latestCoordinates = useMemo(() => {
-    if (current?.lat == null || current?.lon == null) return "-";
-    return `${Number(current.lat).toFixed(4)}, ${Number(current.lon).toFixed(4)}`;
+    if (current?.latitude == null || current?.longitude == null) return "-";
+    return `${current.latitude.toFixed(4)}, ${current.longitude.toFixed(4)}`;
   }, [current]);
 
-  const chartData = useMemo((): ChartDataPoint[] => {
-    return history.map((row) => ({
-      time: formatChartDate(row.timestamp_utc),
-      timestamp_utc: row.timestamp_utc,
-      pm25: row.pm25,
-      pm10: row.pm10,
-      pm1: row.pm1,
-      temperature_c: row.temperature_c,
-      humidity_pct: row.humidity_pct,
-    }));
-  }, [history]);
+  const chartData = useMemo<IndoorChartPoint[]>(
+    () =>
+      history.map((row) => ({
+        time: formatChartDate(row.recorded_at_utc),
+        recorded_at_utc: row.recorded_at_utc,
+        pm1: row.pm1,
+        pm25: row.pm25,
+        pm10: row.pm10,
+        temperature_c: row.temperature_c,
+        humidity_pct: row.humidity_pct,
+      })),
+    [history]
+  );
 
-  const waqiChartData = useMemo((): WaqiChartDataPoint[] => {
-    return waqiHistory.map((row) => ({
-      time: formatChartDate(row.timestamp_utc),
-      timestamp_utc: row.timestamp_utc,
-      pm25: row.pm25,
-      no2: row.no2,
-      o3: row.o3,
-      so2: row.so2,
-      co: row.co,
-    }));
-  }, [waqiHistory]);
+  const waqiChartData = useMemo<OutdoorChartPoint[]>(
+    () =>
+      waqiHistory.map((row) => ({
+        time: formatChartDate(row.recorded_at_utc),
+        recorded_at_utc: row.recorded_at_utc,
+        pm25: row.pm25,
+        no2: row.no2,
+        o3: row.o3,
+        so2: row.so2,
+        co: row.co,
+      })),
+    [waqiHistory]
+  );
 
-  const waqiForecastData = useMemo((): WaqiForecastDataPoint[] => {
-    return aggregateForecast(waqiForecast);
-  }, [waqiForecast]);
+  const waqiForecastData = useMemo<ForecastChartPoint[]>(
+    () => aggregateForecast(waqiForecast?.forecast ?? {}),
+    [waqiForecast]
+  );
 
-  const activeStation = current?.station_id || "Unknown station";
+  const activeStation = current?.source_id || "Unknown source";
+
+  function StatCard({ title, value, subtitle, dominant = false, icon: Icon }: StatCardProps): React.JSX.Element {
+    return (
+      <div className="card">
+        <div className="stat-card">
+          <div>
+            <div className="muted">{title}</div>
+            <div className="stat-value">{value}</div>
+            {subtitle ? <div className="muted small">{subtitle}</div> : null}
+            {dominant && (    
+              <div className="badge badge-highlight" style={{ marginTop: "6px", backgroundImage: "none" }}>
+                Dominant pollutant
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  function StatCardBoard({title, statCards }: StatCardBoardProps): React.JSX.Element {
+    return (
+      <section className="space-y-2">
+        <h1 className="text-3xl font-bold text-slate-900">{title}</h1>
+
+        <div className="stats-grid">
+          {statCards.map((card, index) => (
+            <StatCard
+              key={card.title ?? `${card.title}-${index}`}
+              {...card}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="page">
@@ -489,110 +507,77 @@ export default function App() {
           <div className="card">
             <h2>Indoor Trend</h2>
             <p className="muted small">Recent history from /status/history</p>
-            <div className="chart-wrap">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="chart-wrap" style={{ width: "100%", height: 320 }}>
+              <ResponsiveContainer>
                 <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
-                  <XAxis
-                    dataKey="time"
-                    minTickGap={32}
-                    stroke="#b8c1d1"
-                  />
-                  <YAxis stroke="#b8c1d1" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" />
+                  <YAxis />
                   <Tooltip
-                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
-                    labelFormatter={(_: any, payload: any) =>
-                      payload?.[0]?.payload?.timestamp_utc
-                        ? formatDate(payload[0].payload.timestamp_utc)
+                    labelFormatter={(_, payload) =>
+                      payload?.[0]?.payload?.recorded_at_utc
+                        ? formatDate(payload[0].payload.recorded_at_utc)
                         : "-"
                     }
                   />
-                  <Legend verticalAlign="top" align="center" height={28} />
-                  <Line type="monotone" dataKey="pm25" stroke="#ef4444" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="pm10" stroke="#eab308" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="pm1" stroke="#a855f7" dot={false} strokeWidth={2} />
+                  <Legend />
+                  <Line type="monotone" dataKey="pm1" stroke="#6b7280" name="PM1" dot={false} />
+                  <Line type="monotone" dataKey="pm25" stroke="#ef4444" name="PM2.5" dot={false} />
+                  <Line type="monotone" dataKey="pm10" stroke="#f59e0b" name="PM10" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <h2>Outdoor Trend</h2>
-            <div className="chart-wrap">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="chart-wrap" style={{ width: "100%", height: 320 }}>
+              <ResponsiveContainer>
                 <LineChart data={waqiChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.12)" />
-                  <XAxis
-                    dataKey="time"
-                    minTickGap={32}
-                    stroke="#b8c1d1"
-                  />
-                  <YAxis stroke="#b8c1d1" />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" />
+                  <YAxis />
                   <Tooltip
-                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
-                    labelFormatter={(_: any, payload: any) =>
-                      payload?.[0]?.payload?.timestamp_utc
-                        ? formatDate(payload[0].payload.timestamp_utc)
+                    labelFormatter={(_, payload) =>
+                      payload?.[0]?.payload?.recorded_at_utc
+                        ? formatDate(payload[0].payload.recorded_at_utc)
                         : "-"
                     }
                   />
-                  <Legend verticalAlign="top" align="center" height={28} />
-                  <Line type="monotone" dataKey="pm25" stroke="#ef4444" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="no2" stroke="#eab308" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="o3" stroke="#a855f7" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="so2" stroke="#3b82f6" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="co" stroke="#14b8a6" dot={false} strokeWidth={2} />
+                  <Legend />
+                  <Line type="monotone" dataKey="pm25" stroke="#ef4444" name="PM2.5" dot={false} />
+                  <Line type="monotone" dataKey="o3" stroke="#a855f7" name="O3" dot={false} />
+                  <Line type="monotone" dataKey="no2" stroke="#eab308" name="NO2" dot={false} />
+                  <Line type="monotone" dataKey="so2" stroke="#3b82f6" name="SO2" dot={false} />
+                  <Line type="monotone" dataKey="co" stroke="#14b8a6" name="CO" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
-            </div>            
+            </div>
+          
             <h2>Forecast</h2>
-            <div className="chart-wrap">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                    data={waqiForecastData}
-                    margin={{
-                      top: 20,
-                      right: 0,
-                      bottom: 0,
-                      left: 0,
-                    }}
-                  >
+            <div className="chart-wrap" style={{ width: "100%", height: 320 }}>
+              <ResponsiveContainer>
+                <ComposedChart data={waqiForecastData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="forecast_date" />
-                  <YAxis width="auto" domain={["auto", "auto"]} />
-                  <Tooltip
-                    formatter={(value: any, name: any) => [value, String(name).toUpperCase()]}
-                    labelFormatter={(_: any, payload: any) =>
-                      payload?.[0]?.payload?.timestamp_utc
-                        ? formatDate(payload[0].payload.timestamp_utc)
-                        : "-"
-                    }
-                  />
-                  <Legend verticalAlign="top" align="center" height={28} />
-                  <Area
-                    dataKey="o3MinMax"
-                    fill="#a855f7"
-                    stroke="#a855f7"
-                    fillOpacity={0.12}
-                  />
-                  <Area
-                    dataKey="pm25MinMax"
-                    fill="#ef4444"
-                    stroke="#ef4444"
-                    fillOpacity={0.12}
-                  />
-                  <Area
-                    dataKey="pm10"
-                    fill="#eab308"
-                    stroke="#eab308"
-                    fillOpacity={0.12}
-                  />
-                  <Area
-                    dataKey="uviMinMax"
-                    fill="#14b8a6"
-                    stroke="#14b8a6"
-                    fillOpacity={0.12}
-                  />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Area dataKey="pm25MinMax" 
+                                      fill="#ef4444"
+                          stroke="#ef4444"
+                          fillOpacity={0.12}
+                  name="PM2.5 range" />
+                  <Area dataKey="o3MinMax" 
+                                      fill="#a855f7"
+                          stroke="#a855f7"
+                          fillOpacity={0.12}
+                  name="O3 range" />
+                  <Area dataKey="pm10MinMax" 
+                                      fill="#eab308"
+                          stroke="#eab308"
+                          fillOpacity={0.12}
+                  name="PM10 range" />
                 </ComposedChart>
               </ResponsiveContainer>
-            </div>
+            </div>            
           </div>
           <div className="side-column">
             <div className="card">
@@ -604,7 +589,7 @@ export default function App() {
                 <MapPin size={16} /> {latestCoordinates}
               </div>
               <div className="detail-row">
-                <Clock size={16} /> {formatDate(current?.timestamp_utc)}
+                <Clock size={16} /> {formatDate(current?.recorded_at_utc)}
               </div>
               <div className="detail-row">
                 <Database size={16} /> {formatDate(lastUpdated)}
@@ -621,15 +606,14 @@ export default function App() {
                     .reverse()
                     .slice(0, 12)
                     .map((row, index) => (
-                      <div key={`${row.timestamp_utc}-${index}`} className="record">
-                        <div className="record-title">{formatDate(row.timestamp_utc)}</div>
+                      <div key={`${row.recorded_at_utc}-${index}`} className="record">
+                        <div className="record-title">{formatDate(row.recorded_at_utc)}</div>
                         <div className="record-grid">
                           <div>PM1: {row.pm1 ?? "-"}</div>
                           <div>PM2.5: {row.pm25 ?? "-"}</div>
                           <div>PM10: {row.pm10 ?? "-"}</div>
                           <div>Temp: {row.temperature_c ?? "-"} °C</div>
                           <div>Humidity: {row.humidity_pct ?? "-"} %</div>
-                          <div>Station: {row.station_id ?? "-"}</div>
                         </div>
                       </div>
                     ))
