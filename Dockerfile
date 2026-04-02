@@ -6,7 +6,7 @@ WORKDIR /
 # Copy the rest of the app
 COPY . .
 
-ARG VITE_API_BASE_URL=http://localhost:8008
+ARG VITE_API_BASE_URL=http://localhost:8009
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Build the production bundle
@@ -26,6 +26,6 @@ RUN pip install .
 COPY app ./app
 COPY --from=builder dist ./dist
 
-EXPOSE 8000
+EXPOSE 8009
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8009"]

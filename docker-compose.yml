@@ -1,30 +1,12 @@
 services:
-  postgres:
-    image: postgres:16
-    container_name: air-pollution-postgres
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-airpollution}
-      POSTGRES_USER: ${POSTGRES_USER:-airpollution}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airpollution}
-    volumes:
-      - air_quality_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airpollution} -d ${POSTGRES_DB:-airpollution}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   app:
     build: .
     container_name: air-pollution-app
-    depends_on:
-      postgres:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-airpollution}:${POSTGRES_PASSWORD:-airpollution}@postgres:5432/${POSTGRES_DB:-airpollution}
-      INDOOR_SOURCE_URL: ${INDOOR_SOURCE_URL:-http://192.168.53.203/realtime}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}
+      INDOOR_SOURCE_URL: ${INDOOR_SOURCE_URL}
       WAQI_URL: ${WAQI_URL:-https://api.waqi.info/feed/here/}
       WAQI_TOKEN: ${WAQI_TOKEN}
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
@@ -32,7 +14,13 @@ services:
       HISTORY_DEFAULT_DAYS: ${HISTORY_DEFAULT_DAYS:-7}
       HISTORY_MAX_DAYS: ${HISTORY_MAX_DAYS:-30}
     ports:
-      - "8000:8000"
-
+      - "8009:8009"
+    networks:
+      - ai_stack
+      
 volumes:
   air_quality_postgres_data:
+
+networks:
+  ai_stack:
+    driver: bridge
