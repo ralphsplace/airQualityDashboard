@@ -41,10 +41,7 @@ app.include_router(outdoor_router)
 #Support for serving static React Frontend 
 LOCAL_NAT_REGEX = (
     r"^https?://("
-    r"localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|"
-    r"10(?:\.\d{1,3}){3}|"
-    r"192\.168(?:\.\d{1,3}){2}|"
-    r"172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}"
+    r"air-quality\.ralphsplace\.local"
     r")(?::\d{1,5})?$"
 )
 

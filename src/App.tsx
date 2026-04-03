@@ -211,7 +211,7 @@ function aggregateForecast(
 
 export default function App(): React.JSX.Element {
   const BACKEND_URL =
-    (import.meta.env.VITE_TOOL_URI as string) || "http://192.168.53.40:8009/api";
+    (import.meta.env.VITE_TOOL_URI as string) || "https://air-quality.ralphsplace.local/api";
 
   const [current, setCurrent] = useState<IndoorCurrentResponse | null>(null);
   const [history, setHistory] = useState<IndoorHistoryItem[]>([]);
